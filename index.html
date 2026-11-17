@@ -61,6 +61,12 @@
                 <span class="hidden lg:inline">Auto-Shape: បើក</span>
             </button>
 
+            <!-- Ink to Text Toggle -->
+            <button id="btn-inktotext" onclick="toggleInkToText()" title="ប្តូរការសរសេរប៊ិចទៅជាអក្សរ ឬលេខពុម្ពស្វ័យប្រវត្តិ (Handwriting to Text)" class="px-2.5 py-1.5 rounded-xl bg-teal-600/30 border border-teal-500/60 text-teal-200 text-xs font-semibold flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="type" class="w-3.5 h-3.5 text-teal-300"></i>
+                <span id="inktotext-label">ប៊ិច → អក្សរ: បើក</span>
+            </button>
+
             <!-- AI Handwritten Math Toggle -->
             <button id="btn-aimath" onclick="toggleAIMath()" title="AI ស្គាល់ការសរសេរលេខបញ្ចប់ដោយសញ្ញាស្មើ (=)" class="px-2.5 py-1.5 rounded-xl bg-violet-600/30 border border-violet-500/60 text-violet-200 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
                 <i data-lucide="sparkles" class="w-3.5 h-3.5 text-violet-300"></i>
@@ -641,6 +647,7 @@
         let gridIndex = 0;
 
         let autoShapeEnabled = true;
+        let inkToTextEnabled = localStorage.getItem('ink_to_text') !== 'false';
         let aiMathEnabled = true;
         let auto3DModeEnabled = false;
         let spotlightEnabled = false;
@@ -1528,6 +1535,26 @@
             btn.classList.toggle('opacity-50', !autoShapeEnabled);
         }
 
+        function toggleInkToText() {
+            inkToTextEnabled = !inkToTextEnabled;
+            localStorage.setItem('ink_to_text', inkToTextEnabled);
+            updateInkToTextUI();
+            showToast(`✍️ ប៊ិច → អក្សរ (Ink to Text)៖ ${inkToTextEnabled ? 'បានបើក' : 'បានបិទ'}`);
+        }
+
+        function updateInkToTextUI() {
+            const btn = document.getElementById('btn-inktotext');
+            const label = document.getElementById('inktotext-label');
+            if (!btn) return;
+            if (inkToTextEnabled) {
+                btn.className = "px-2.5 py-1.5 rounded-xl bg-teal-600/30 border border-teal-500/60 text-teal-200 text-xs font-semibold flex items-center gap-1.5 shrink-0 transition";
+                if (label) label.innerText = 'ប៊ិច → អក្សរ: បើក';
+            } else {
+                btn.className = "px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 text-xs font-medium flex items-center gap-1.5 shrink-0 transition";
+                if (label) label.innerText = 'ប៊ិច → អក្សរ: បិទ';
+            }
+        }
+
         function toggleAIMath() {
             aiMathEnabled = !aiMathEnabled;
             const btn = document.getElementById('btn-aimath');
@@ -1853,6 +1880,9 @@
                         renderBoard();
                         if (currentTool === 'pen') {
                             trackStrokeForMathAI(strokePoints, bounds);
+                            if (inkToTextEnabled) {
+                                queueInkToTextConversion(item);
+                            }
                         }
                     }
                 }
@@ -2324,7 +2354,153 @@
         }
 
         // =====================================================================
-        // 9. HANDWRITTEN MATH AI (= TRIGGER, FRACTIONS & ACTIONS)
+        // 9. INK-TO-TEXT ENGINE (HANDWRITING DIRECTLY TO TYPED TEXT & NUMBERS)
+        // =====================================================================
+        let pendingInkStrokes = [];
+        let inkToTextTimer = null;
+
+        function queueInkToTextConversion(strokeItem) {
+            if (!inkToTextEnabled) return;
+            pendingInkStrokes.push(strokeItem);
+
+            if (inkToTextTimer) clearTimeout(inkToTextTimer);
+            inkToTextTimer = setTimeout(() => {
+                processInkToTextCluster();
+            }, 750);
+        }
+
+        async function processInkToTextCluster() {
+            if (!inkToTextEnabled || pendingInkStrokes.length === 0) return;
+            const currentSlide = slides[currentSlideIdx];
+            if (!currentSlide || !currentSlide.items) {
+                pendingInkStrokes = [];
+                return;
+            }
+
+            // Verify these strokes still exist in slide.items
+            const validStrokes = pendingInkStrokes.filter(s => currentSlide.items.includes(s));
+            pendingInkStrokes = [];
+            if (validStrokes.length === 0) return;
+
+            // Compute collective bounding box
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const s of validStrokes) {
+                const b = s.bounds || getStrokeBounds(s.points);
+                minX = Math.min(minX, b.x);
+                minY = Math.min(minY, b.y);
+                maxX = Math.max(maxX, b.x + b.w);
+                maxY = Math.max(maxY, b.y + b.h);
+            }
+
+            const bounds = {
+                x: minX,
+                y: minY,
+                w: Math.max(12, maxX - minX),
+                h: Math.max(12, maxY - minY)
+            };
+
+            // Avoid converting huge screen-wide doodles
+            if (bounds.w > 900 || bounds.h > 650) return;
+
+            let recognizedText = null;
+
+            // 1. Fast geometric recognizer for basic digits/math
+            if (validStrokes.length <= 4) {
+                const geomChar = parseHandwrittenStrokesToMath(validStrokes);
+                if (geomChar && geomChar.length > 0) {
+                    recognizedText = geomChar;
+                }
+            }
+
+            // 2. Tesseract OCR on high-contrast snapshot
+            if (!recognizedText && typeof Tesseract !== 'undefined') {
+                try {
+                    const snap = renderStrokesSnapshot(validStrokes, bounds);
+                    const worker = await getTesseractWorker();
+                    if (worker) {
+                        const ocrRes = await worker.recognize(snap);
+                        const ocrRaw = ocrRes?.data?.text || '';
+                        const clean = ocrRaw.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+                        if (clean.length > 0) {
+                            recognizedText = clean;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Ink-to-text OCR error:', e);
+                }
+            }
+
+            if (recognizedText && recognizedText.trim().length > 0) {
+                const cleanText = recognizedText.trim();
+                saveHistoryState();
+
+                // Remove the handwritten strokes
+                currentSlide.items = currentSlide.items.filter(item => !validStrokes.includes(item));
+
+                // Font size corresponding to the handwriting height
+                const fontSize = Math.max(22, Math.min(72, Math.round(bounds.h * 0.92)));
+                const textColor = validStrokes[0].color || currentColor;
+
+                // Add the typed text item
+                const textItem = {
+                    type: 'text',
+                    text: cleanText,
+                    x: bounds.x,
+                    y: bounds.y + bounds.h * 0.8,
+                    size: fontSize,
+                    color: textColor,
+                    bounds: {
+                        x: bounds.x,
+                        y: bounds.y,
+                        w: Math.max(bounds.w, cleanText.length * fontSize * 0.55),
+                        h: bounds.h
+                    },
+                    labelKh: 'អក្សរពុម្ព'
+                };
+                currentSlide.items.push(textItem);
+                renderBoard();
+                showToast(`✍️ ប៊ិចប្តូរជាអក្សរ៖ "${cleanText}"`);
+            }
+        }
+
+        function renderStrokesSnapshot(strokeItems, bounds) {
+            const pad = 24;
+            const rw = Math.max(80, bounds.w + pad * 2);
+            const rh = Math.max(50, bounds.h + pad * 2);
+            const snap = document.createElement('canvas');
+            const scale = Math.max(1.5, Math.min(3, 140 / rh));
+            snap.width = Math.round(rw * scale);
+            snap.height = Math.round(rh * scale);
+            const ctx = snap.getContext('2d');
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, snap.width, snap.height);
+
+            ctx.save();
+            ctx.scale(scale, scale);
+            ctx.translate(-bounds.x + pad, -bounds.y + pad);
+
+            for (const item of strokeItems) {
+                if (item.points && item.points.length > 0) {
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = Math.max(4, (item.size || 3) * 1.35);
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    for (let i = 0; i < item.points.length; i++) {
+                        const p = item.points[i];
+                        if (i === 0) ctx.moveTo(p.x, p.y);
+                        else ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+            return snap;
+        }
+
+        // =====================================================================
+        // 10. HANDWRITTEN MATH AI (= TRIGGER, FRACTIONS & ACTIONS)
         // =====================================================================
         function trackStrokeForMathAI(pts, bounds) {
             if (!aiMathEnabled) return;
@@ -2424,7 +2600,7 @@
             try {
                 const worker = await Tesseract.createWorker('eng');
                 await worker.setParameters({
-                    tessedit_char_whitelist: '0123456789+-*/=^()xy. ',
+                    tessedit_char_whitelist: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ០១២៣៤៥៦៧៨៩+-*/=^()xy.?,!%:; ',
                 });
                 window.tesseractWorkerInstance = worker;
                 return worker;
@@ -3693,6 +3869,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
             renderLaserAndSpotlightLoop();
             updateApiKeyIndicator();
             updateCalcEngineUI();
+            updateInkToTextUI();
         };
     </script>
 </body>
