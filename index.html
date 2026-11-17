@@ -1,0 +1,2726 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ក្ដាខៀនឆ្លាតវៃ - Smart Whiteboard AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            font-family: 'Kantumruy Pro', 'Inter', sans-serif;
+            overscroll-behavior: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.22s ease-out forwards; }
+        canvas { touch-action: none; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-800 h-screen w-screen overflow-hidden flex flex-col">
+
+    <!-- Top Standard Classroom Toolbar -->
+    <header class="h-14 bg-slate-900/95 border-b border-slate-700/80 px-3 flex items-center justify-between gap-2 z-20 shrink-0 text-white">
+        <!-- Brand & Theme -->
+        <div class="flex items-center gap-2 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-md">
+                <i data-lucide="presentation" class="w-5 h-5 text-white"></i>
+            </div>
+            <div class="hidden md:block">
+                <h1 class="text-sm font-bold leading-tight text-white">ក្ដាខៀនឆ្លាតវៃ AI</h1>
+                <p class="text-[10px] text-emerald-400">Smart Classroom Board</p>
+            </div>
+        </div>
+
+        <!-- Center Classroom Quick Actions -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+            <!-- Board Theme Switch -->
+            <button onclick="cycleBoardTheme()" title="ប្ដូរពណ៌ក្ដាខៀន (បៃតង / ស / ខ្មៅ)" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="palette" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span id="theme-label" class="hidden sm:inline">ក្ដាបៃតង</span>
+            </button>
+
+            <!-- Board Grid Switch -->
+            <button onclick="cycleBoardGrid()" title="ប្ដូរបន្ទាត់ក្រឡា" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="grid" class="w-3.5 h-3.5 text-sky-400"></i>
+                <span id="grid-label" class="hidden sm:inline">ផ្ទៃរលោង</span>
+            </button>
+
+            <!-- Auto Shape Toggle -->
+            <button id="btn-autoshape" onclick="toggleAutoShape()" title="កែតម្រូវរាងធរណីមាត្រស្វ័យប្រវត្តិ" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/25 border border-emerald-500/60 text-emerald-300 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="shapes" class="w-3.5 h-3.5"></i>
+                <span class="hidden lg:inline">Auto-Shape: បើក</span>
+            </button>
+
+            <!-- AI Handwritten Math Toggle -->
+            <button id="btn-aimath" onclick="toggleAIMath()" title="AI ស្គាល់ការសរសេរលេខបញ្ចប់ដោយសញ្ញាស្មើ (=)" class="px-2.5 py-1.5 rounded-xl bg-violet-600/30 border border-violet-500/60 text-violet-200 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-violet-300"></i>
+                <span>AI គណនា (=)</span>
+            </button>
+
+            <!-- Solve Now Button -->
+            <button onclick="triggerHandwrittenMathSolve(null)" title="ស្កេនគណនាលេខលើក្ដាឥឡូវនេះ" class="px-2.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1 shrink-0 shadow transition">
+                <i data-lucide="calculator" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">គណនាឥឡូវ</span>
+            </button>
+
+            <!-- Graph, Axes & 3D Space Modal -->
+            <button onclick="openModal('graph-space-modal')" class="px-2.5 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/45 border border-cyan-500/60 text-cyan-200 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-cyan-300"></i>
+                <span>ក្រាប & អ័ក្ស</span>
+            </button>
+
+            <!-- 3D Studio & Auto 3D -->
+            <button id="btn-auto3d" onclick="toggleAuto3D()" title="បើកបង្ហាញ 3D ស្វ័យប្រវត្តិពេលគូសរូប" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="box" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span id="auto3d-label">3D Auto: បិទ</span>
+            </button>
+
+            <button onclick="open3DStudioFromBoard()" class="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1 shrink-0 shadow transition">
+                <i data-lucide="orbit" class="w-3.5 h-3.5"></i>
+                <span>បង្ហាញ 3D</span>
+            </button>
+
+            <!-- Classroom Teaching Tools -->
+            <button onclick="openModal('classroom-tools-modal')" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium flex items-center gap-1.5 shrink-0 transition">
+                <i data-lucide="ruler" class="w-3.5 h-3.5 text-rose-400"></i>
+                <span class="hidden md:inline">ឧបករណ៍បង្រៀន</span>
+            </button>
+        </div>
+
+        <!-- Right: API Key Settings, Undo, Redo, Read Aloud, Clear -->
+        <div class="flex items-center gap-1 shrink-0">
+            <!-- Free API Key Settings Button -->
+            <button onclick="openModal('api-key-modal')" title="កំណត់ API Key Google Gemini (ឥតគិតថ្លៃ Free)" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                <i data-lucide="key" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span id="api-key-status-label" class="hidden sm:inline text-amber-200">API Key</span>
+                <span id="api-key-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+            </button>
+
+            <button onclick="readBoardAloud()" title="អានអត្ថបទ/លទ្ធផលជាសំឡេង" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 transition">
+                <i data-lucide="volume-2" class="w-4 h-4"></i>
+            </button>
+            <button onclick="undo()" title="ត្រឡប់ក្រោយ (Undo)" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+                <i data-lucide="undo-2" class="w-4 h-4"></i>
+            </button>
+            <button onclick="redo()" title="ទៅមុខ (Redo)" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+                <i data-lucide="redo-2" class="w-4 h-4"></i>
+            </button>
+            <button onclick="confirmClearBoard()" title="សម្អាតក្ដាខៀន" class="p-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 transition">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Interactive Whiteboard Workspace -->
+    <main id="board-viewport" class="relative flex-1 w-full h-full overflow-hidden bg-[#143d29] transition-colors duration-300">
+        <!-- Zoomable & Pannable World Container -->
+        <div id="board-world" class="absolute inset-0 origin-top-left will-change-transform">
+            <!-- Grid / Ruled Background Layer -->
+            <canvas id="grid-canvas" class="absolute inset-0 pointer-events-none"></canvas>
+            <!-- Main Drawing Layer -->
+            <canvas id="main-canvas" class="absolute inset-0 cursor-crosshair"></canvas>
+            <!-- Preview / Shape / Selection Layer -->
+            <canvas id="preview-canvas" class="absolute inset-0 pointer-events-none"></canvas>
+        </div>
+
+        <!-- Laser & Spotlight Overlay Layer (Screen Space) -->
+        <canvas id="overlay-canvas" class="absolute inset-0 pointer-events-none z-10"></canvas>
+
+        <!-- Screen Shade (វាំងននបិទបាំងចម្លើយ) -->
+        <div id="screen-shade" class="hidden absolute inset-x-0 top-0 h-1/2 bg-slate-900/95 border-b-4 border-amber-500 z-20 flex flex-col items-center justify-end pb-3 shadow-2xl">
+            <p class="text-amber-300 text-xs font-bold mb-1">វាំងននបិទបាំងចម្លើយ (អូសគែមខាងក្រោមដើម្បីបើក)</p>
+            <div id="shade-handle" class="w-24 h-2.5 bg-amber-400 rounded-full cursor-ns-resize"></div>
+            <button onclick="toggleScreenShade(false)" class="absolute top-3 right-3 px-2.5 py-1 bg-rose-600 text-white text-xs rounded-lg font-bold">បិទវាំងនន</button>
+        </div>
+
+        <!-- Interactive Ruler / Protractor Widget -->
+        <div id="math-ruler-widget" class="hidden absolute left-28 top-32 z-20 bg-amber-100/90 border-2 border-amber-600 rounded-xl shadow-xl cursor-move select-none flex flex-col justify-between px-3 py-1.5" style="width: 360px; height: 64px;">
+            <div class="flex items-center justify-between text-[10px] font-bold text-amber-900">
+                <span>បន្ទាត់វាស់ស្ដង់ដារ (cm)</span>
+                <div class="flex items-center gap-1.5">
+                    <button onclick="rotateRulerWidget(-15)" class="px-1.5 bg-amber-300 rounded">↺</button>
+                    <button onclick="rotateRulerWidget(15)" class="px-1.5 bg-amber-300 rounded">↻</button>
+                    <button onclick="document.getElementById('math-ruler-widget').classList.add('hidden')" class="px-1.5 bg-rose-500 text-white rounded">✕</button>
+                </div>
+            </div>
+            <div id="ruler-ticks" class="w-full h-5 border-t border-amber-800 flex justify-between items-start text-[9px] font-mono text-amber-950"></div>
+        </div>
+
+        <!-- Interactive Rotatable Coordinate Axes Widget (បង្វិលអ័ក្ស Oxy និង Oxyz ដោយផ្ទាល់) -->
+        <div id="interactive-axes-widget" class="hidden absolute z-20 border-2 border-dashed border-cyan-400/85 rounded-2xl bg-slate-900/20 backdrop-blur-[1px] select-none" style="left: 220px; top: 120px; width: 360px; height: 320px;">
+            <div id="axes-widget-header" class="absolute -top-9 left-0 right-0 flex items-center justify-between bg-slate-900/95 text-white px-2.5 py-1 rounded-xl text-[11px] shadow-lg cursor-move border border-slate-700">
+                <span id="axes-widget-title" class="font-bold text-cyan-300 flex items-center gap-1">
+                    <i data-lucide="rotate-3d" class="w-3.5 h-3.5"></i> អ័ក្ស Oxyz (អូសខាងក្នុងដើម្បីបង្វិល)
+                </span>
+                <div class="flex items-center gap-1">
+                    <button onclick="stampInteractiveAxesToBoard()" title="ដាក់អ័ក្សនេះជាប់លើក្ដាខៀន" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded text-[10px] font-bold">ដាក់ជាប់ក្ដា</button>
+                    <button onclick="openInteractiveAxesIn3D()" title="បើកក្នុង 3D Studio" class="px-2 py-0.5 bg-cyan-600 hover:bg-cyan-500 rounded text-[10px] font-bold">3D</button>
+                    <button onclick="closeInteractiveAxesWidget()" class="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-500 rounded text-[10px]">✕</button>
+                </div>
+            </div>
+            <canvas id="interactive-axes-canvas" class="w-full h-full cursor-grab active:cursor-grabbing"></canvas>
+            <div class="absolute bottom-1.5 inset-x-0 text-center pointer-events-none">
+                <span class="bg-black/65 text-white/95 text-[10px] px-2.5 py-0.5 rounded-full">អូសលើអ័ក្សដើម្បីបង្វិល • អូសរបារខាងលើដើម្បីផ្លាស់ទី</span>
+            </div>
+        </div>
+
+        <!-- Floating AI Equation Action Bar -->
+        <div id="ai-equation-action-bar" class="hidden fixed top-16 right-4 z-30 bg-white/95 backdrop-blur-md border-2 border-cyan-500 shadow-2xl rounded-2xl p-3 max-w-xs space-y-2 animate-fade-in">
+            <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-cyan-800 flex items-center gap-1">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-cyan-600"></i>
+                    AI ស្គាល់សមីការ / អនុគមន៍
+                </span>
+                <button onclick="document.getElementById('ai-equation-action-bar').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+            </div>
+            <p id="ai-eq-summary-text" class="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1.5 rounded-lg font-mono"></p>
+            <div class="flex items-center gap-2">
+                <button id="btn-ai-plot-graph" onclick="plotDetectedEquationGraph()" class="flex-1 py-1.5 px-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-sm">
+                    <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> គូសក្រាប
+                </button>
+                <button id="btn-ai-show-3d" onclick="showDetectedEquation3D()" class="flex-1 py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-sm">
+                    <i data-lucide="box" class="w-3.5 h-3.5"></i> បង្ហាញ 3D
+                </button>
+            </div>
+        </div>
+
+        <!-- Right-Click Context Menu for Selected Shape / Region -->
+        <div id="board-context-menu" class="hidden fixed z-40 bg-slate-900/95 backdrop-blur-md border border-slate-700 text-white rounded-2xl shadow-2xl p-1.5 w-60 text-xs space-y-1">
+            <button onclick="contextShowSelectedIn3D('extrude')" class="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-600/30 text-emerald-300 font-semibold flex items-center gap-2">
+                <i data-lucide="box" class="w-4 h-4"></i> បង្ហាញរូបនេះក្នុងលំហ 3D
+            </button>
+            <button onclick="contextShowSelectedIn3D('lathe')" class="w-full text-left px-3 py-2 rounded-xl hover:bg-cyan-600/30 text-cyan-300 font-semibold flex items-center gap-2">
+                <i data-lucide="rotate-3d" class="w-4 h-4"></i> បង្វិលជារូប 3D (360° Space)
+            </button>
+            <button onclick="contextShowSelectedIn3D('hologram')" class="w-full text-left px-3 py-2 rounded-xl hover:bg-amber-600/30 text-amber-300 font-semibold flex items-center gap-2">
+                <i data-lucide="layers" class="w-4 h-4"></i> បង្ហាញជាផ្ទាំង 3D ក្នុងលំហ
+            </button>
+            <div class="border-t border-slate-700/80 my-1"></div>
+            <button onclick="deleteSelectedRegion()" class="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-600/30 text-rose-300 font-semibold flex items-center gap-2">
+                <i data-lucide="trash" class="w-4 h-4"></i> លុបតំបន់ដែលបានជ្រើសរើស
+            </button>
+        </div>
+
+        <!-- Bottom-Left: Multi-Page Lesson Slides & Zoom Controls -->
+        <div class="absolute bottom-20 left-3 z-20 flex flex-wrap items-center gap-2">
+            <!-- Slide Pagination -->
+            <div class="flex items-center gap-1 bg-slate-900/85 backdrop-blur-md text-white px-2 py-1 rounded-full border border-slate-700/80 text-xs shadow-lg">
+                <button onclick="prevSlide()" title="ទំព័រមុន" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
+                <span id="slide-indicator" class="px-1.5 font-bold text-emerald-300">ទំព័រ 1 / 1</span>
+                <button onclick="nextSlide()" title="ទំព័របន្ទាប់" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
+                <button onclick="addNewSlide()" title="បន្ថែមទំព័រថ្មី" class="ml-0.5 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded-full font-bold text-[11px]">+</button>
+            </div>
+
+            <!-- Zoom In / Out Controls -->
+            <div class="flex items-center gap-1 bg-slate-900/85 backdrop-blur-md text-white px-2 py-1 rounded-full border border-slate-700/80 text-xs shadow-lg">
+                <button onclick="zoomBoard(-0.15)" title="បង្រួម" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="zoom-out" class="w-3.5 h-3.5"></i></button>
+                <button onclick="resetBoardZoom()" id="zoom-level-label" title="ត្រឡប់មក 100%" class="px-1.5 font-mono font-bold text-sky-300">100%</button>
+                <button onclick="zoomBoard(0.15)" title="ពង្រីក" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="zoom-in" class="w-3.5 h-3.5"></i></button>
+            </div>
+        </div>
+
+        <!-- Bottom-Right Quick AI Status Pill -->
+        <div class="hidden sm:flex items-center gap-2 absolute bottom-20 right-4 bg-black/50 backdrop-blur-md text-white/95 px-3 py-1.5 rounded-full text-xs border border-white/15 pointer-events-none z-20">
+            <span id="ai-math-status-pill" class="text-violet-300 font-medium">AI គណនា (=): រួចរាល់</span>
+            <span class="text-white/30">|</span>
+            <span id="detected-shape-badge">រាងចុងក្រោយ៖ មិនទាន់មាន</span>
+        </div>
+
+        <!-- Bottom Floating Drawing Dock -->
+        <div class="absolute bottom-3 inset-x-2 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-20 bg-slate-900/95 backdrop-blur-lg border border-slate-700/90 rounded-2xl px-2.5 py-2 shadow-2xl flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-full">
+            <!-- Tools -->
+            <button data-tool="select" onclick="selectTool('select')" title="ជ្រើសរើសរូប (ចុច Mouse ស្ដាំដើម្បីបង្ហាញ 3D)" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 flex items-center gap-1 text-xs shrink-0">
+                <i data-lucide="mouse-pointer-2" class="w-4 h-4"></i>
+                <span class="hidden md:inline">ជ្រើសរើស</span>
+            </button>
+            <button data-tool="pen" onclick="selectTool('pen')" title="ប៊ិចសរសេរ" class="tool-btn active bg-emerald-600 text-white p-2 rounded-xl flex items-center gap-1 text-xs font-semibold shrink-0">
+                <i data-lucide="pen-tool" class="w-4 h-4"></i>
+                <span class="hidden md:inline">ប៊ិច</span>
+            </button>
+            <button data-tool="highlighter" onclick="selectTool('highlighter')" title="ប៊ិចហាយឡាយ" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 flex items-center gap-1 text-xs shrink-0">
+                <i data-lucide="highlighter" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="eraser" onclick="selectTool('eraser')" title="ជ័រលុប" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 flex items-center gap-1 text-xs shrink-0">
+                <i data-lucide="eraser" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="text" onclick="selectTool('text')" title="វាយអក្សរខ្មែរ/ឡាតាំង" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 flex items-center gap-1 text-xs shrink-0">
+                <i data-lucide="type" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="laser" onclick="selectTool('laser')" title="ប៊ិចឡាស៊ែរចង្អុលបង្រៀន" class="tool-btn p-2 rounded-xl text-rose-300 hover:bg-slate-800 flex items-center gap-1 text-xs shrink-0">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+            </button>
+
+            <div class="h-6 w-px bg-slate-700 mx-0.5 shrink-0"></div>
+
+            <!-- Geometric Shapes & Axes -->
+            <button data-tool="line" onclick="selectTool('line')" title="បន្ទាត់ត្រង់" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 shrink-0">
+                <i data-lucide="minus" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="rect" onclick="selectTool('rect')" title="ចតុកោណកែង" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 shrink-0">
+                <i data-lucide="square" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="circle" onclick="selectTool('circle')" title="រង្វង់" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 shrink-0">
+                <i data-lucide="circle" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="triangle" onclick="selectTool('triangle')" title="ត្រីកោណ" class="tool-btn p-2 rounded-xl text-slate-300 hover:bg-slate-800 shrink-0">
+                <i data-lucide="triangle" class="w-4 h-4"></i>
+            </button>
+            <button data-tool="axes2d" onclick="selectTool('axes2d')" title="គូសអ័ក្ស Oxy (អាចបង្វិលបាន)" class="tool-btn px-2 py-1.5 rounded-xl text-cyan-300 hover:bg-slate-800 text-xs font-bold shrink-0">
+                Oxy
+            </button>
+            <button data-tool="axes3d" onclick="selectTool('axes3d')" title="គូសអ័ក្ស 3D Oxyz (អាចបង្វិលក្នុងលំហបាន)" class="tool-btn px-2 py-1.5 rounded-xl text-sky-300 hover:bg-slate-800 text-xs font-bold shrink-0">
+                3D
+            </button>
+
+            <div class="h-6 w-px bg-slate-700 mx-0.5 shrink-0"></div>
+
+            <!-- Chalk / Marker Color Swatches -->
+            <div class="flex items-center gap-1.5 px-1 shrink-0">
+                <button onclick="setColor('#ffffff')" class="w-5 h-5 rounded-full bg-white border-2 border-slate-400 hover:scale-110 transition" title="ដីសពណ៌ស"></button>
+                <button onclick="setColor('#fde047')" class="w-5 h-5 rounded-full bg-yellow-300 border border-slate-500 hover:scale-110 transition" title="ដីសពណ៌លឿង"></button>
+                <button onclick="setColor('#38bdf8')" class="w-5 h-5 rounded-full bg-sky-400 border border-slate-500 hover:scale-110 transition" title="ពណ៌ខៀវ"></button>
+                <button onclick="setColor('#4ade80')" class="w-5 h-5 rounded-full bg-green-400 border border-slate-500 hover:scale-110 transition" title="ពណ៌បៃតង"></button>
+                <button onclick="setColor('#fb7185')" class="w-5 h-5 rounded-full bg-rose-400 border border-slate-500 hover:scale-110 transition" title="ពណ៌ក្រហម"></button>
+                <button onclick="setColor('#0f172a')" class="w-5 h-5 rounded-full bg-slate-950 border border-slate-400 hover:scale-110 transition" title="ហ្វឺតពណ៌ខ្មៅ"></button>
+            </div>
+
+            <!-- Brush Size -->
+            <div class="flex items-center gap-1 pl-1 shrink-0">
+                <input id="brush-size-slider" type="range" min="2" max="18" value="4" oninput="setBrushSize(this.value)" class="w-16 accent-emerald-500 cursor-pointer" title="ទំហំប៊ិច">
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating Text Input Overlay for Text Tool -->
+    <div id="text-input-overlay" class="hidden fixed z-30 bg-white/95 backdrop-blur-md p-2.5 rounded-2xl shadow-2xl border-2 border-emerald-500 flex flex-col gap-2 w-72">
+        <input id="board-text-input" type="text" placeholder="វាយអក្សរ ឬរូបមន្តនៅទីនេះ..." class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500 text-slate-900">
+        <div class="flex items-center justify-between gap-2">
+            <select id="board-text-size" class="text-xs border border-slate-300 rounded-lg px-2 py-1 text-slate-700">
+                <option value="22">តូច (22px)</option>
+                <option value="32" selected>មធ្យម (32px)</option>
+                <option value="46">ធំ (46px)</option>
+            </select>
+            <div class="flex gap-1">
+                <button onclick="cancelTextInput()" class="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-semibold text-slate-700">បោះបង់</button>
+                <button onclick="commitTextInput()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">ដាក់លើក្ដា</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 0: Free Google Gemini API Key Settings -->
+    <div id="api-key-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 animate-fade-in">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 shadow-2xl text-white space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 class="text-base font-bold flex items-center gap-2 text-emerald-400">
+                    <i data-lucide="key" class="w-5 h-5"></i> កំណត់ Google Gemini API Key (Free / ឥតគិតថ្លៃ)
+                </h2>
+                <button onclick="closeModal('api-key-modal')" class="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-300 transition">✕</button>
+            </div>
+            
+            <p class="text-xs text-slate-300 leading-relaxed">
+                មុខងារ AI ស្គាល់លេខដៃ និងគណនារូបមន្ត (=) ត្រូវការ API Key ពី Google Gemini (ទទួលបានដោយឥតគិតថ្លៃ 100% ពី Google AI Studio)។ Key របស់អ្នកត្រូវបានរក្សាទុកតែនៅក្នុង Browser (localStorage) របស់អ្នកដោយសុវត្ថិភាព មិនបញ្ជូនទៅ server ផ្សេងក្រៅពី Google API ឡើយ។
+            </p>
+
+            <!-- Input Field -->
+            <div class="space-y-1.5">
+                <label class="block text-xs font-semibold text-slate-200">បញ្ចូល Gemini API Key របស់អ្នក៖</label>
+                <div class="relative flex items-center">
+                    <input id="gemini-api-key-input" type="password" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 pr-10 text-sm font-mono text-emerald-300 focus:outline-none focus:border-emerald-500">
+                    <button type="button" onclick="toggleApiKeyVisibility()" class="absolute right-3 text-slate-400 hover:text-slate-200" title="បង្ហាញ / លាក់">
+                        <i id="eye-icon" data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Model Selection -->
+            <div class="space-y-1.5">
+                <label class="block text-xs font-semibold text-slate-200">ជ្រើសរើស Model Gemini៖</label>
+                <select id="gemini-model-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (លឿន & ឆ្លាតវៃ - ណែនាំចម្បង)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (ស្ថិរភាព Free Tier)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (សម្រាប់កិច្ចការគណនាស្មុគស្មាញ)</option>
+                </select>
+            </div>
+
+            <!-- How to get free API key guide -->
+            <div class="p-3 bg-slate-800/70 border border-slate-700 rounded-2xl text-xs space-y-1.5">
+                <div class="flex items-center gap-1.5 text-amber-300 font-semibold">
+                    <i data-lucide="info" class="w-4 h-4 shrink-0"></i>
+                    <span>របៀបយក API Key ដោយឥតគិតថ្លៃ (Free 100%)៖</span>
+                </div>
+                <ol class="list-decimal list-inside text-slate-300 space-y-1 text-[11px]">
+                    <li>ចូលទៅកាន់ <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:underline font-semibold">Google AI Studio (ចុចទីនេះដើម្បីយក Free Key)</a></li>
+                    <li>Sign in ដោយប្រើគណនី Google (Gmail) របស់អ្នក</li>
+                    <li>ចុចលើប៊ូតុង <b>"Create API key"</b></li>
+                    <li>Copy Key យកមក Paste ដាក់ក្នុងប្រអប់ខាងលើ រួចចុច <b>"រក្សាទុក (Save)"</b> ជាការស្រេច!</li>
+                </ol>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex items-center justify-between gap-2 pt-1">
+                <button onclick="clearSavedApiKey()" class="px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-semibold transition">
+                    លុប Key
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="testApiKey()" id="btn-test-key" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-sky-300 transition flex items-center gap-1.5">
+                        <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> សាកល្បង Key
+                    </button>
+                    <button onclick="saveApiKeySettings()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg transition">
+                        រក្សាទុក (Save)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 1: Auto 3D Studio (Three.js) -->
+    <div id="three-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh] text-white">
+            <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                        <i data-lucide="box" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-white">ស្ទូឌីយោគំរូ 3D ស្វ័យប្រវត្តិ (Auto 3D Space)</h2>
+                        <p id="three-subtitle" class="text-xs text-slate-400">អូសលើរូប 3D ដើម្បីបង្វិល 360° • ពង្រីកបង្រួមដោយកង់ Mouse</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('three-modal')" class="p-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white transition">✕</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 flex-1 overflow-y-auto">
+                <!-- 3D Viewport -->
+                <div class="lg:col-span-2 relative bg-gradient-to-b from-slate-950 to-slate-900 min-h-[320px] flex items-center justify-center">
+                    <div id="three-canvas-container" class="w-full h-full min-h-[320px] cursor-grab active:cursor-grabbing"></div>
+                    <div class="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-[11px] text-slate-200">
+                        <span id="formula-title" class="font-bold text-amber-300 block">រូបធរណីមាត្រ 3D</span>
+                        <span id="formula-volume" class="block text-slate-300">មាឌ V = ...</span>
+                        <span id="formula-area" class="block text-slate-400">ផ្ទៃក្រឡា S = ...</span>
+                    </div>
+                </div>
+
+                <!-- 3D Controls -->
+                <div class="p-4 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 space-y-3.5 text-xs">
+                    <div>
+                        <label class="block text-slate-400 font-semibold mb-1">ប្រភេទគំរូ 3D</label>
+                        <select id="three-shape-select" onchange="change3DShape(this.value)" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium">
+                            <option value="extrude">បំប្លែងពីរូបគូសផ្ទាល់ (Exact 3D Match)</option>
+                            <option value="cube">គូប / ប្រអប់កែង (Cube / Box)</option>
+                            <option value="sphere">ស្វ៊ែរ (Sphere)</option>
+                            <option value="cylinder">ស៊ីឡាំង (Cylinder)</option>
+                            <option value="cone">កោណ (Cone)</option>
+                            <option value="pyramid">ពីរ៉ាមីត (Pyramid)</option>
+                            <option value="revolve">បង្វិលខ្សែកោង 360° (Lathe 3D)</option>
+                            <option value="hologram">ផ្ទាំងរូបភាព 3D ក្នុងលំហ</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-slate-400 mb-1">
+                            <span>កម្រាស់ 3D (Depth)</span>
+                            <span id="extrude-depth-val" class="text-amber-400 font-bold">1.0</span>
+                        </div>
+                        <input id="extrude-depth-slider" type="range" min="0.2" max="3.0" step="0.1" value="1.0" oninput="update3DDepth(this.value)" class="w-full accent-amber-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 font-semibold mb-1.5">ពណ៌វត្ថុ 3D</label>
+                        <div class="flex items-center gap-2">
+                            <button onclick="set3DColor('#10b981')" class="w-6 h-6 rounded-full bg-emerald-500 border-2 border-white"></button>
+                            <button onclick="set3DColor('#38bdf8')" class="w-6 h-6 rounded-full bg-sky-400 border border-slate-600"></button>
+                            <button onclick="set3DColor('#f59e0b')" class="w-6 h-6 rounded-full bg-amber-500 border border-slate-600"></button>
+                            <button onclick="set3DColor('#f43f5e')" class="w-6 h-6 rounded-full bg-rose-500 border border-slate-600"></button>
+                            <button onclick="set3DColor('#a855f7')" class="w-6 h-6 rounded-full bg-purple-500 border border-slate-600"></button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button id="btn-wireframe" onclick="toggle3DWireframe()" class="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-cyan-300 flex items-center justify-center gap-1.5">
+                            <i data-lucide="boxes" class="w-3.5 h-3.5"></i> គ្រោងឆ្អឹង (ជ្រុង)
+                        </button>
+                        <button id="btn-autorotate" onclick="toggle3DAutoRotate()" class="py-2 px-3 rounded-xl bg-emerald-600/25 border border-emerald-500/50 font-semibold text-emerald-300 flex items-center justify-center gap-1.5">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> បង្វិលស្វ័យប្រវត្តិ
+                        </button>
+                    </div>
+
+                    <button onclick="stamp3DToWhiteboard()" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold shadow-lg flex items-center justify-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i> បញ្ចូលរូប 3D ទៅលើក្ដាខៀន (គ្មានស៊ុម)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Graph, Coordinate Axes & 3D Space Solids -->
+    <div id="graph-space-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-5 shadow-2xl text-white space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 class="text-base font-bold flex items-center gap-2 text-cyan-300">
+                    <i data-lucide="trending-up" class="w-5 h-5"></i> គូសក្រាបអនុគមន៍ អ័ក្សកូអរដោនេ និងរូបក្នុងលំហ
+                </h2>
+                <button onclick="closeModal('graph-space-modal')" class="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-300">✕</button>
+            </div>
+
+            <!-- Function Graph Plotter -->
+            <div class="bg-slate-800/70 p-3.5 rounded-2xl border border-slate-700 space-y-2.5">
+                <label class="text-xs font-bold text-cyan-300 block">១. គូសក្រាបអនុគមន៍ y = f(x)</label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <div class="flex items-center bg-slate-950 border border-slate-700 rounded-xl px-3 flex-1">
+                        <span class="text-cyan-400 font-mono text-sm mr-2">y =</span>
+                        <input id="graph-fn-input" type="text" value="0.5*x^2 - 2" placeholder="ឧ. 2*x + 1, 0.5*x^2 - 2, 2*sin(x)" class="w-full py-2 bg-transparent text-sm font-mono text-white focus:outline-none">
+                    </div>
+                    <button onclick="plotFunctionGraphToBoard()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-xs font-bold text-white shrink-0">គូសក្រាបលើក្ដា</button>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span class="text-slate-400">គំរូរហ័ស៖</span>
+                    <button onclick="document.getElementById('graph-fn-input').value='2*x + 1'" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-mono">2x + 1</button>
+                    <button onclick="document.getElementById('graph-fn-input').value='0.5*x^2 - 2'" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-mono">0.5x² - 2</button>
+                    <button onclick="document.getElementById('graph-fn-input').value='0.25*x^3 - 1.5*x'" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-mono">0.25x³ - 1.5x</button>
+                    <button onclick="document.getElementById('graph-fn-input').value='2*sin(x)'" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-mono">2sin(x)</button>
+                    <label class="ml-auto flex items-center gap-1.5 text-slate-300 cursor-pointer">
+                        <input id="graph-include-axes" type="checkbox" checked class="accent-cyan-500"> ភ្ជាប់អ័ក្ស (Oxy)
+                    </label>
+                </div>
+            </div>
+
+            <!-- Coordinate Axes Presets -->
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-emerald-300 block">២. បញ្ចូលតម្រុយអ័ក្សកូអរដោនេ (អាចអូសបង្វិលបាន)</label>
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                    <button onclick="insertPresetAxes('axes2d')" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl font-semibold flex flex-col items-center gap-1">
+                        <span class="text-cyan-400 font-mono text-sm">(Oxy)</span>
+                        <span>តម្រុយអ័ក្ស 2D</span>
+                    </button>
+                    <button onclick="insertPresetAxes('axes3d')" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl font-semibold flex flex-col items-center gap-1">
+                        <span class="text-sky-400 font-mono text-sm">(Oxyz)</span>
+                        <span>តម្រុយអ័ក្ស 3D</span>
+                    </button>
+                    <button onclick="insertPresetAxes('unitcircle')" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl font-semibold flex flex-col items-center gap-1">
+                        <span class="text-amber-400 font-mono text-sm">sin/cos</span>
+                        <span>រង្វង់ត្រីកោណមាត្រ</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3D Space Geometry Solids -->
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-amber-300 block">៣. រូបធរណីមាត្រក្នុងលំហ (មានបន្ទាត់ដាច់ៗខាងក្នុង)</label>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+                    <button onclick="insert3DSpaceSolid('cube')" class="p-2.5 bg-slate-800 hover:bg-amber-600/30 border border-slate-700 rounded-xl font-semibold">គូប</button>
+                    <button onclick="insert3DSpaceSolid('cylinder')" class="p-2.5 bg-slate-800 hover:bg-amber-600/30 border border-slate-700 rounded-xl font-semibold">ស៊ីឡាំង</button>
+                    <button onclick="insert3DSpaceSolid('cone')" class="p-2.5 bg-slate-800 hover:bg-amber-600/30 border border-slate-700 rounded-xl font-semibold">កោណ</button>
+                    <button onclick="insert3DSpaceSolid('pyramid')" class="p-2.5 bg-slate-800 hover:bg-amber-600/30 border border-slate-700 rounded-xl font-semibold">ពីរ៉ាមីត</button>
+                    <button onclick="insert3DSpaceSolid('sphere')" class="p-2.5 bg-slate-800 hover:bg-amber-600/30 border border-slate-700 rounded-xl font-semibold">ស្វ៊ែរ</button>
+                    <button onclick="insert3DSpaceSolid('prism')" class="p-2.5 bg-slate-800 hover:bg-amber-600/30 border border-slate-700 rounded-xl font-semibold">ព្រីស</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: Classroom Standard Teaching Tools -->
+    <div id="classroom-tools-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-5 shadow-2xl text-white space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 class="text-base font-bold flex items-center gap-2 text-rose-300">
+                    <i data-lucide="school" class="w-5 h-5"></i> ឧបករណ៍បង្រៀនស្ដង់ដារក្នុងថ្នាក់រៀន
+                </h2>
+                <button onclick="closeModal('classroom-tools-modal')" class="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-300">✕</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5 text-xs">
+                <button onclick="showMathRuler(); closeModal('classroom-tools-modal')" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl flex items-center gap-2.5 font-semibold">
+                    <i data-lucide="ruler" class="w-5 h-5 text-amber-400"></i> បន្ទាត់វាស់ស្ដង់ដារ
+                </button>
+                <button onclick="toggleScreenShade(true); closeModal('classroom-tools-modal')" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl flex items-center gap-2.5 font-semibold">
+                    <i data-lucide="panel-top" class="w-5 h-5 text-sky-400"></i> វាំងននបិទបាំងចម្លើយ
+                </button>
+                <button onclick="toggleSpotlight(); closeModal('classroom-tools-modal')" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl flex items-center gap-2.5 font-semibold">
+                    <i data-lucide="flashlight" class="w-5 h-5 text-yellow-300"></i> ពិលបញ្ចាំងផ្តោតអារម្មណ៍
+                </button>
+                <button onclick="pickRandomStudent()" class="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl flex items-center gap-2.5 font-semibold">
+                    <i data-lucide="users" class="w-5 h-5 text-emerald-400"></i> ចាប់ឈ្មោះសិស្សដោយចៃដន្យ
+                </button>
+            </div>
+
+            <!-- Smart Calculator with Fraction Support -->
+            <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700 space-y-2">
+                <label class="text-xs font-bold text-emerald-300 block">ម៉ាស៊ីនគិតលេខឆ្លាតវ័យ (គាំទ្រលេខខ្មែរ និងប្រភាគ)</label>
+                <div class="flex gap-2">
+                    <input id="smart-calc-input" type="text" placeholder="ឧ. (12 + 8) / 3 ឬ ៣/៤ + ១/២" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                    <button onclick="evaluateSmartCalc()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold">គណនា</button>
+                </div>
+                <div id="smart-calc-result" class="text-xs text-amber-300 font-mono min-h-[20px]"></div>
+                <div class="flex gap-2">
+                    <button onclick="insertCalcResultToBoard(false)" class="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-xl text-[11px] font-semibold">បញ្ចូលចម្លើយទៅក្ដា</button>
+                    <button onclick="insertCalcResultToBoard(true)" class="flex-1 py-1.5 bg-violet-600 hover:bg-violet-500 rounded-xl text-[11px] font-semibold">បញ្ចូលជាប្រភាគ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Non-blocking Toast Notification -->
+    <div id="toast-box" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white border border-emerald-500/60 px-4 py-2 rounded-full text-xs font-medium shadow-2xl backdrop-blur-md"></div>
+
+    <script>
+        // =====================================================================
+        // 1. INITIALIZATION & STATE MANAGEMENT
+        // =====================================================================
+        const viewport = document.getElementById('board-viewport');
+        const worldEl = document.getElementById('board-world');
+        const gridCanvas = document.getElementById('grid-canvas');
+        const gridCtx = gridCanvas.getContext('2d');
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const previewCanvas = document.getElementById('preview-canvas');
+        const previewCtx = previewCanvas.getContext('2d');
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
+
+        let currentTool = 'pen';
+        let currentColor = '#ffffff';
+        let brushSize = 4;
+        let isDrawing = false;
+        let startX = 0, startY = 0;
+        let lastPt = { x: 0, y: 0 };
+        let strokePoints = [];
+        let drawnObjects = [];
+        let selectedObject = null;
+        let selectionBox = null;
+
+        // Board Appearance & Modes
+        const themes = [
+            { id: 'chalkboard', label: 'ក្ដាបៃតង', bg: '#143d29', defaultPen: '#ffffff', gridColor: 'rgba(255,255,255,0.12)' },
+            { id: 'whiteboard', label: 'ក្ដាស', bg: '#f8fafc', defaultPen: '#0f172a', gridColor: 'rgba(15,23,42,0.10)' },
+            { id: 'blackboard', label: 'ក្ដាខ្មៅ', bg: '#0f172a', defaultPen: '#fde047', gridColor: 'rgba(255,255,255,0.10)' }
+        ];
+        let themeIndex = 0;
+        let currentTheme = 'chalkboard';
+
+        const grids = [
+            { id: 'none', label: 'ផ្ទៃរលោង' },
+            { id: 'dots', label: 'ចំណុចតម្រង់' },
+            { id: 'squares', label: 'ក្រឡាការ៉េ' },
+            { id: 'ruled', label: 'បន្ទាត់សរសេរ' }
+        ];
+        let gridIndex = 0;
+
+        let autoShapeEnabled = true;
+        let aiMathEnabled = true;
+        let auto3DModeEnabled = false;
+        let spotlightEnabled = false;
+        let spotlightPos = { x: 400, y: 300 };
+        let laserTrail = [];
+
+        // Zoom & Pan State
+        let boardScale = 1.0;
+        let boardPan = { x: 0, y: 0 };
+        let isPanningBoard = false;
+        let panStart = { x: 0, y: 0 };
+
+        // Slides & Undo/Redo History
+        let slides = [{ history: [], step: -1, objects: [] }];
+        let currentSlideIdx = 0;
+
+        // Last detected shape for 3D reconstruction
+        let lastDetectedShape = {
+            type: 'rect',
+            points: [],
+            bounds: { x: 100, y: 100, w: 160, h: 120 },
+            labelKh: 'ចតុកោណកែង'
+        };
+
+        // Handwritten Math AI state & API Key Configuration
+        let isAIProcessingMath = false;
+        let mathAutoTimer = null;
+        let recentMathStrokes = [];
+        let lastAIDetectedEquation = null;
+        let lastCalcOutput = { decimal: '', fraction: '' };
+
+        // =====================================================================
+        // API KEY MANAGEMENT (LOCAL STORAGE & SETTINGS)
+        // =====================================================================
+        function getStoredApiKey() {
+            return (localStorage.getItem('gemini_api_key') || '').trim();
+        }
+
+        function getStoredModel() {
+            return (localStorage.getItem('gemini_model') || 'gemini-2.0-flash').trim();
+        }
+
+        function updateApiKeyIndicator() {
+            const key = getStoredApiKey();
+            const dot = document.getElementById('api-key-dot');
+            const label = document.getElementById('api-key-status-label');
+            const input = document.getElementById('gemini-api-key-input');
+            const select = document.getElementById('gemini-model-select');
+
+            if (input) input.value = key;
+            if (select) select.value = getStoredModel();
+
+            if (key) {
+                if (dot) {
+                    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
+                }
+                if (label) {
+                    label.innerText = 'API Key: រួចរាល់';
+                    label.className = 'hidden sm:inline text-emerald-300 font-semibold';
+                }
+            } else {
+                if (dot) {
+                    dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+                }
+                if (label) {
+                    label.innerText = 'ដាក់ API Key';
+                    label.className = 'hidden sm:inline text-amber-200';
+                }
+            }
+        }
+
+        function saveApiKeySettings() {
+            const input = document.getElementById('gemini-api-key-input');
+            const select = document.getElementById('gemini-model-select');
+            const key = (input ? input.value : '').trim();
+            const model = (select ? select.value : 'gemini-2.0-flash');
+
+            if (!key) {
+                showToast('សូមបញ្ចូល Gemini API Key មុននឹងចុចរក្សាទុក');
+                return;
+            }
+
+            localStorage.setItem('gemini_api_key', key);
+            localStorage.setItem('gemini_model', model);
+            updateApiKeyIndicator();
+            closeModal('api-key-modal');
+            showToast('✅ បានរក្សាទុក API Key ដោយជោគជ័យ!');
+        }
+
+        function clearSavedApiKey() {
+            localStorage.removeItem('gemini_api_key');
+            const input = document.getElementById('gemini-api-key-input');
+            if (input) input.value = '';
+            updateApiKeyIndicator();
+            showToast('បានលុប API Key រួចរាល់');
+        }
+
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('gemini-api-key-input');
+            const eye = document.getElementById('eye-icon');
+            if (!input) return;
+            if (input.type === 'password') {
+                input.type = 'text';
+                if (eye) eye.setAttribute('data-lucide', 'eye-off');
+            } else {
+                input.type = 'password';
+                if (eye) eye.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        }
+
+        async function testApiKey() {
+            const input = document.getElementById('gemini-api-key-input');
+            const select = document.getElementById('gemini-model-select');
+            const key = (input ? input.value : '').trim();
+            const model = select ? select.value : 'gemini-2.0-flash';
+
+            if (!key) {
+                showToast('សូមបញ្ចូល API Key ដើម្បីធ្វើតេស្ត');
+                return;
+            }
+
+            const btn = document.getElementById('btn-test-key');
+            if (btn) btn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> កំពុងតេស្ត...';
+
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }]
+                    })
+                });
+
+                if (res.ok) {
+                    showToast('🎉 API Key ដំណើរការបានយ៉ាងល្អឥតខ្ចោះ!');
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    const msg = err?.error?.message || 'API Key មិនត្រឹមត្រូវ ឬគ្មានសិទ្ធិប្រើប្រាស់';
+                    showToast(`❌ កំហុស៖ ${msg}`);
+                }
+            } catch (err) {
+                showToast('❌ មិនអាចភ្ជាប់ទៅកាន់ Google API បានទេ សូមពិនិត្យមើលអ៊ីនធឺណិត');
+            } finally {
+                if (btn) btn.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5"></i> សាកល្បង Key';
+                lucide.createIcons();
+            }
+        }
+
+        // =====================================================================
+        // 2. CANVAS RESIZING & GRID RENDERING (PRESERVES DRAWINGS)
+        // =====================================================================
+        function resizeCanvases() {
+            const w = viewport.clientWidth || window.innerWidth;
+            const h = viewport.clientHeight || (window.innerHeight - 56);
+
+            // Preserve existing main canvas content before resizing
+            let tempCanvas = null;
+            if (canvas.width > 0 && canvas.height > 0) {
+                tempCanvas = document.createElement('canvas');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+                tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
+            }
+
+            [gridCanvas, canvas, previewCanvas, overlayCanvas].forEach(c => {
+                c.width = w;
+                c.height = h;
+            });
+
+            if (tempCanvas) {
+                ctx.drawImage(tempCanvas, 0, 0);
+            }
+            renderBoardGrid();
+        }
+
+        function renderBoardGrid() {
+            const w = gridCanvas.width;
+            const h = gridCanvas.height;
+            gridCtx.clearRect(0, 0, w, h);
+            const gridType = grids[gridIndex].id;
+            if (gridType === 'none') return;
+
+            const color = themes[themeIndex].gridColor;
+            gridCtx.save();
+            gridCtx.strokeStyle = color;
+            gridCtx.fillStyle = color;
+            gridCtx.lineWidth = 1;
+
+            const step = 36;
+            if (gridType === 'dots') {
+                for (let x = step; x < w; x += step) {
+                    for (let y = step; y < h; y += step) {
+                        gridCtx.beginPath();
+                        gridCtx.arc(x, y, 1.5, 0, Math.PI * 2);
+                        gridCtx.fill();
+                    }
+                }
+            } else if (gridType === 'squares') {
+                gridCtx.beginPath();
+                for (let x = 0; x <= w; x += step) {
+                    gridCtx.moveTo(x, 0);
+                    gridCtx.lineTo(x, h);
+                }
+                for (let y = 0; y <= h; y += step) {
+                    gridCtx.moveTo(0, y);
+                    gridCtx.lineTo(w, y);
+                }
+                gridCtx.stroke();
+            } else if (gridType === 'ruled') {
+                gridCtx.beginPath();
+                for (let y = 48; y <= h; y += 44) {
+                    gridCtx.moveTo(0, y);
+                    gridCtx.lineTo(w, y);
+                }
+                gridCtx.stroke();
+            }
+            gridCtx.restore();
+        }
+
+        function cycleBoardTheme() {
+            themeIndex = (themeIndex + 1) % themes.length;
+            const t = themes[themeIndex];
+            currentTheme = t.id;
+            viewport.style.backgroundColor = t.bg;
+            document.getElementById('theme-label').innerText = t.label;
+            setColor(t.defaultPen);
+            renderBoardGrid();
+            if (!document.getElementById('interactive-axes-widget').classList.contains('hidden')) {
+                renderInteractiveAxesCanvas();
+            }
+            showToast(`បានប្ដូរទៅ ${t.label}`);
+        }
+
+        function cycleBoardGrid() {
+            gridIndex = (gridIndex + 1) % grids.length;
+            document.getElementById('grid-label').innerText = grids[gridIndex].label;
+            renderBoardGrid();
+            showToast(`បន្ទាត់ផ្ទៃក្ដា៖ ${grids[gridIndex].label}`);
+        }
+
+        // =====================================================================
+        // 3. ZOOM & PAN CONTROLS
+        // =====================================================================
+        function applyBoardTransform() {
+            worldEl.style.transform = `translate(${boardPan.x}px, ${boardPan.y}px) scale(${boardScale})`;
+            document.getElementById('zoom-level-label').innerText = `${Math.round(boardScale * 100)}%`;
+        }
+
+        function zoomBoard(delta, centerX = viewport.clientWidth / 2, centerY = viewport.clientHeight / 2) {
+            const oldScale = boardScale;
+            boardScale = Math.max(0.4, Math.min(4.0, boardScale + delta));
+            const ratio = boardScale / oldScale;
+            boardPan.x = centerX - (centerX - boardPan.x) * ratio;
+            boardPan.y = centerY - (centerY - boardPan.y) * ratio;
+            applyBoardTransform();
+        }
+
+        function resetBoardZoom() {
+            boardScale = 1.0;
+            boardPan = { x: 0, y: 0 };
+            applyBoardTransform();
+            showToast('ទំហំក្ដាខៀន៖ 100%');
+        }
+
+        function screenToBoardCoords(clientX, clientY) {
+            const rect = viewport.getBoundingClientRect();
+            return {
+                x: (clientX - rect.left - boardPan.x) / boardScale,
+                y: (clientY - rect.top - boardPan.y) / boardScale
+            };
+        }
+
+        viewport.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const rect = viewport.getBoundingClientRect();
+                zoomBoard(e.deltaY < 0 ? 0.12 : -0.12, e.clientX - rect.left, e.clientY - rect.top);
+            }
+        }, { passive: false });
+
+        // =====================================================================
+        // 4. TOOLS, DRAWING, SHAPES & AUTO-SHAPE RECOGNITION
+        // =====================================================================
+        function selectTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                if (btn.dataset.tool === tool) {
+                    btn.classList.add('active', 'bg-emerald-600', 'text-white');
+                    btn.classList.remove('text-slate-300', 'text-cyan-300', 'text-sky-300', 'text-rose-300');
+                } else {
+                    btn.classList.remove('active', 'bg-emerald-600', 'text-white');
+                    btn.classList.add('text-slate-300');
+                }
+            });
+            canvas.style.cursor = tool === 'select' ? 'default' : (tool === 'text' ? 'text' : 'crosshair');
+            hideContextMenu();
+            if (tool !== 'select') {
+                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                selectionBox = null;
+            }
+        }
+
+        function setColor(hex) {
+            currentColor = hex;
+            showToast('បានប្ដូរពណ៌ប៊ិច');
+        }
+
+        function setBrushSize(val) {
+            brushSize = parseInt(val, 10) || 4;
+        }
+
+        function toggleAutoShape() {
+            autoShapeEnabled = !autoShapeEnabled;
+            const btn = document.getElementById('btn-autoshape');
+            btn.querySelector('span').innerText = `Auto-Shape: ${autoShapeEnabled ? 'បើក' : 'បិទ'}`;
+            btn.classList.toggle('opacity-50', !autoShapeEnabled);
+        }
+
+        function toggleAIMath() {
+            aiMathEnabled = !aiMathEnabled;
+            const btn = document.getElementById('btn-aimath');
+            btn.classList.toggle('opacity-50', !aiMathEnabled);
+            document.getElementById('ai-math-status-pill').innerText = aiMathEnabled ? 'AI គណនា (=): បើក' : 'AI គណនា (=): បិទ';
+        }
+
+        function toggleAuto3D() {
+            auto3DModeEnabled = !auto3DModeEnabled;
+            document.getElementById('auto3d-label').innerText = `3D Auto: ${auto3DModeEnabled ? 'បើក' : 'បិទ'}`;
+            const btn = document.getElementById('btn-auto3d');
+            btn.classList.toggle('bg-amber-600/30', auto3DModeEnabled);
+            btn.classList.toggle('border-amber-400', auto3DModeEnabled);
+        }
+
+        function getShapeLabelKh(type) {
+            const map = {
+                line: 'បន្ទាត់ត្រង់',
+                rect: 'ចតុកោណកែង',
+                circle: 'រង្វង់ / អេលីប',
+                triangle: 'ត្រីកោណ',
+                polygon: 'ពហុកោណ',
+                axes2d: 'តម្រុយអ័ក្ស (Oxy)',
+                axes3d: 'តម្រុយអ័ក្ស (Oxyz)',
+                solid3d: 'រូបធរណីមាត្រក្នុងលំហ'
+            };
+            return map[type] || 'គំនូរដៃ';
+        }
+
+        function generateShapeOutlinePoints(type, x1, y1, x2, y2) {
+            const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+            const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+            if (type === 'rect' || type === 'axes2d' || type === 'axes3d' || type === 'solid3d') {
+                return [
+                    { x: minX, y: minY },
+                    { x: maxX, y: minY },
+                    { x: maxX, y: maxY },
+                    { x: minX, y: maxY }
+                ];
+            } else if (type === 'triangle') {
+                return [
+                    { x: (minX + maxX) / 2, y: minY },
+                    { x: maxX, y: maxY },
+                    { x: minX, y: maxY }
+                ];
+            } else if (type === 'circle') {
+                const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+                const rx = (maxX - minX) / 2, ry = (maxY - minY) / 2;
+                const pts = [];
+                for (let i = 0; i < 36; i++) {
+                    const a = (i / 36) * Math.PI * 2;
+                    pts.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+                }
+                return pts;
+            }
+            return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+        }
+
+        function drawGeometricShape(targetCtx, type, x1, y1, x2, y2, color, width) {
+            targetCtx.save();
+            targetCtx.strokeStyle = color;
+            targetCtx.lineWidth = width;
+            targetCtx.lineCap = 'round';
+            targetCtx.lineJoin = 'round';
+            targetCtx.beginPath();
+
+            if (type === 'line') {
+                targetCtx.moveTo(x1, y1);
+                targetCtx.lineTo(x2, y2);
+            } else if (type === 'rect') {
+                targetCtx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+                targetCtx.restore();
+                return;
+            } else if (type === 'circle') {
+                const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+                const rx = Math.max(4, Math.abs(x2 - x1) / 2);
+                const ry = Math.max(4, Math.abs(y2 - y1) / 2);
+                targetCtx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+            } else if (type === 'triangle') {
+                const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+                const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                targetCtx.moveTo((minX + maxX) / 2, minY);
+                targetCtx.lineTo(maxX, maxY);
+                targetCtx.lineTo(minX, maxY);
+                targetCtx.closePath();
+            }
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        function recognizeFreehandShape(pts) {
+            if (pts.length < 8) return null;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, pathLen = 0;
+            for (let i = 0; i < pts.length; i++) {
+                minX = Math.min(minX, pts[i].x);
+                maxX = Math.max(maxX, pts[i].x);
+                minY = Math.min(minY, pts[i].y);
+                maxY = Math.max(maxY, pts[i].y);
+                if (i > 0) pathLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            }
+            const w = maxX - minX, h = maxY - minY;
+            if (w < 24 && h < 24) return null;
+
+            const startEndDist = Math.hypot(pts[pts.length - 1].x - pts[0].x, pts[pts.length - 1].y - pts[0].y);
+            const diag = Math.hypot(w, h);
+
+            // Straight Line check
+            if (pathLen < diag * 1.14 && diag > 45) {
+                return {
+                    type: 'line',
+                    bounds: { x: minX, y: minY, w, h },
+                    points: [pts[0], pts[pts.length - 1]],
+                    drawArgs: [pts[0].x, pts[0].y, pts[pts.length - 1].x, pts[pts.length - 1].y]
+                };
+            }
+
+            // Closed shape check (Circle, Triangle, Rectangle)
+            if (startEndDist < Math.max(35, diag * 0.25) && pathLen > 90) {
+                const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+                const rx = w / 2, ry = h / 2;
+                let radialErr = 0;
+                for (const p of pts) {
+                    const nx = (p.x - cx) / (rx || 1);
+                    const ny = (p.y - cy) / (ry || 1);
+                    radialErr += Math.abs(Math.hypot(nx, ny) - 1);
+                }
+                radialErr /= pts.length;
+
+                if (radialErr < 0.17) {
+                    return {
+                        type: 'circle',
+                        bounds: { x: minX, y: minY, w, h },
+                        points: generateShapeOutlinePoints('circle', minX, minY, maxX, maxY),
+                        drawArgs: [minX, minY, maxX, maxY]
+                    };
+                }
+
+                // Compare bounding box fill / perimeter ratio for triangle vs rect
+                const rectPerim = 2 * (w + h);
+                if (pathLen > rectPerim * 0.85 && pathLen < rectPerim * 1.2) {
+                    return {
+                        type: 'rect',
+                        bounds: { x: minX, y: minY, w, h },
+                        points: generateShapeOutlinePoints('rect', minX, minY, maxX, maxY),
+                        drawArgs: [minX, minY, maxX, maxY]
+                    };
+                } else if (pathLen >= rectPerim * 0.65 && pathLen <= rectPerim * 0.85) {
+                    return {
+                        type: 'triangle',
+                        bounds: { x: minX, y: minY, w, h },
+                        points: generateShapeOutlinePoints('triangle', minX, minY, maxX, maxY),
+                        drawArgs: [minX, minY, maxX, maxY]
+                    };
+                }
+            }
+            return null;
+        }
+
+        function updateLastDetectedShape(type, points, bounds) {
+            lastDetectedShape = {
+                type,
+                points,
+                bounds,
+                labelKh: getShapeLabelKh(type)
+            };
+            document.getElementById('detected-shape-badge').innerText = `រាងចុងក្រោយ៖ ${lastDetectedShape.labelKh}`;
+        }
+
+        // =====================================================================
+        // 5. POINTER EVENTS (DRAWING, SELECTION, LASER, PANNING)
+        // =====================================================================
+        function handlePointerDown(clientX, clientY, button = 0, shiftKey = false) {
+            hideContextMenu();
+            if (button === 1 || shiftKey) {
+                isPanningBoard = true;
+                panStart = { x: clientX - boardPan.x, y: clientY - boardPan.y };
+                return;
+            }
+            if (button !== 0) return;
+
+            const pt = screenToBoardCoords(clientX, clientY);
+            startX = pt.x;
+            startY = pt.y;
+            lastPt = pt;
+
+            if (currentTool === 'text') {
+                openTextInputAt(clientX, clientY, pt.x, pt.y);
+                return;
+            }
+
+            if (currentTool === 'laser') {
+                isDrawing = true;
+                laserTrail.push({ x: clientX - viewport.getBoundingClientRect().left, y: clientY - viewport.getBoundingClientRect().top, time: Date.now() });
+                return;
+            }
+
+            isDrawing = true;
+            strokePoints = [pt];
+
+            if (currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'eraser') {
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(pt.x, pt.y);
+                if (currentTool === 'eraser') {
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineWidth = brushSize * 5;
+                } else if (currentTool === 'highlighter') {
+                    ctx.globalAlpha = 0.35;
+                    ctx.strokeStyle = currentColor;
+                    ctx.lineWidth = brushSize * 4;
+                } else {
+                    ctx.strokeStyle = currentColor;
+                    ctx.lineWidth = brushSize;
+                }
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+            }
+        }
+
+        function handlePointerMove(clientX, clientY) {
+            const rect = viewport.getBoundingClientRect();
+            if (spotlightEnabled) {
+                spotlightPos = { x: clientX - rect.left, y: clientY - rect.top };
+            }
+
+            if (isPanningBoard) {
+                boardPan.x = clientX - panStart.x;
+                boardPan.y = clientY - panStart.y;
+                applyBoardTransform();
+                return;
+            }
+
+            if (!isDrawing) return;
+
+            if (currentTool === 'laser') {
+                laserTrail.push({ x: clientX - rect.left, y: clientY - rect.top, time: Date.now() });
+                return;
+            }
+
+            const pt = screenToBoardCoords(clientX, clientY);
+            lastPt = pt;
+            strokePoints.push(pt);
+
+            if (currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'eraser') {
+                ctx.lineTo(pt.x, pt.y);
+                ctx.stroke();
+            } else if (['line', 'rect', 'circle', 'triangle', 'axes2d', 'axes3d'].includes(currentTool)) {
+                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                if (currentTool === 'axes2d' || currentTool === 'axes3d') {
+                    previewCtx.save();
+                    previewCtx.strokeStyle = '#38bdf8';
+                    previewCtx.setLineDash([6, 4]);
+                    previewCtx.strokeRect(Math.min(startX, pt.x), Math.min(startY, pt.y), Math.abs(pt.x - startX), Math.abs(pt.y - startY));
+                    previewCtx.restore();
+                } else {
+                    drawGeometricShape(previewCtx, currentTool, startX, startY, pt.x, pt.y, currentColor, brushSize);
+                }
+            } else if (currentTool === 'select') {
+                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                drawSelectionMarquee(Math.min(startX, pt.x), Math.min(startY, pt.y), Math.abs(pt.x - startX), Math.abs(pt.y - startY));
+            }
+        }
+
+        function handlePointerUp() {
+            if (isPanningBoard) {
+                isPanningBoard = false;
+                return;
+            }
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            if (currentTool === 'laser') return;
+
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+            if (['line', 'rect', 'circle', 'triangle', 'axes2d', 'axes3d'].includes(currentTool)) {
+                const bounds = {
+                    x: Math.min(startX, lastPt.x),
+                    y: Math.min(startY, lastPt.y),
+                    w: Math.max(140, Math.abs(lastPt.x - startX)),
+                    h: Math.max(140, Math.abs(lastPt.y - startY))
+                };
+                if (currentTool === 'axes2d' || currentTool === 'axes3d') {
+                    openInteractiveAxesWidget(currentTool, bounds.x, bounds.y, Math.max(260, bounds.w), Math.max(240, bounds.h));
+                    showToast('អូសលើអ័ក្សដោយផ្ទាល់ដើម្បីបង្វិល 360° ឬចុច «ដាក់ជាប់ក្ដា»!');
+                    return;
+                }
+                drawGeometricShape(ctx, currentTool, startX, startY, lastPt.x, lastPt.y, currentColor, brushSize);
+                const shapePts = generateShapeOutlinePoints(currentTool, startX, startY, lastPt.x, lastPt.y);
+                drawnObjects.push({ type: currentTool, bounds, points: shapePts, labelKh: getShapeLabelKh(currentTool) });
+                updateLastDetectedShape(currentTool, shapePts, bounds);
+                saveHistoryState();
+                if (auto3DModeEnabled && currentTool !== 'line') {
+                    setTimeout(() => open3DStudioFromBoard(), 220);
+                }
+            } else if (currentTool === 'select') {
+                const w = Math.abs(lastPt.x - startX);
+                const h = Math.abs(lastPt.y - startY);
+                if (w < 12 && h < 12) {
+                    const hit = findObjectAtPoint(startX, startY);
+                    if (hit) setSelectionFromObject(hit);
+                } else {
+                    selectionBox = { x: Math.min(startX, lastPt.x), y: Math.min(startY, lastPt.y), w, h };
+                    selectedObject = findObjectInBox(selectionBox);
+                    drawSelectionMarquee(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+                    showToast('បានជ្រើសរើសតំបន់ • ចុច Mouse ស្ដាំដើម្បីបង្ហាញក្នុងលំហ 3D');
+                }
+            } else if (currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'eraser') {
+                ctx.restore();
+                if (currentTool === 'pen' && strokePoints.length > 2) {
+                    const recognized = autoShapeEnabled ? recognizeFreehandShape(strokePoints) : null;
+                    if (recognized && recognized.type !== 'line') {
+                        // Restore before this freehand stroke and draw clean geometric shape
+                        restorePreviousStepForShape();
+                        drawGeometricShape(ctx, recognized.type, ...recognized.drawArgs, currentColor, brushSize);
+                        drawnObjects.push({ type: recognized.type, bounds: recognized.bounds, points: recognized.points, labelKh: getShapeLabelKh(recognized.type) });
+                        updateLastDetectedShape(recognized.type, recognized.points, recognized.bounds);
+                        saveHistoryState();
+                        showToast(`Auto-Shape៖ បានកែតម្រូវទៅជា ${getShapeLabelKh(recognized.type)}`);
+                        if (auto3DModeEnabled) {
+                            setTimeout(() => open3DStudioFromBoard(), 220);
+                        }
+                        return;
+                    } else {
+                        const bounds = getStrokeBounds(strokePoints);
+                        drawnObjects.push({ type: 'polygon', bounds, points: strokePoints, labelKh: 'គំនូរដៃ' });
+                        updateLastDetectedShape('polygon', strokePoints, bounds);
+                        trackStrokeForMathAI(strokePoints, bounds);
+                    }
+                }
+                saveHistoryState();
+            }
+        }
+
+        function getStrokeBounds(pts) {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (const p of pts) {
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+            }
+            return { x: minX, y: minY, w: Math.max(10, maxX - minX), h: Math.max(10, maxY - minY) };
+        }
+
+        // Mouse & Touch Event Listeners
+        canvas.addEventListener('mousedown', (e) => handlePointerDown(e.clientX, e.clientY, e.button, e.shiftKey));
+        window.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', () => handlePointerUp());
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                handlePointerDown(e.touches[0].clientX, e.touches[0].clientY, 0, false);
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchend', () => handlePointerUp());
+
+        // Right-Click Context Menu
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const pt = screenToBoardCoords(e.clientX, e.clientY);
+            if (!selectionBox) {
+                const hit = findObjectAtPoint(pt.x, pt.y);
+                if (hit) setSelectionFromObject(hit);
+            }
+            if (selectionBox || drawnObjects.length > 0) {
+                if (!selectionBox) {
+                    setSelectionFromObject(drawnObjects[drawnObjects.length - 1]);
+                }
+                const menu = document.getElementById('board-context-menu');
+                menu.style.left = `${Math.min(window.innerWidth - 250, e.clientX)}px`;
+                menu.style.top = `${Math.min(window.innerHeight - 190, e.clientY)}px`;
+                menu.classList.remove('hidden');
+            }
+        });
+
+        function hideContextMenu() {
+            document.getElementById('board-context-menu').classList.add('hidden');
+        }
+
+        function drawSelectionMarquee(x, y, w, h) {
+            previewCtx.save();
+            previewCtx.strokeStyle = '#38bdf8';
+            previewCtx.lineWidth = 2;
+            previewCtx.setLineDash([6, 4]);
+            previewCtx.strokeRect(x, y, w, h);
+            previewCtx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+            previewCtx.fillRect(x, y, w, h);
+            previewCtx.restore();
+        }
+
+        function findObjectAtPoint(x, y) {
+            for (let i = drawnObjects.length - 1; i >= 0; i--) {
+                const b = drawnObjects[i].bounds;
+                if (x >= b.x - 12 && x <= b.x + b.w + 12 && y >= b.y - 12 && y <= b.y + b.h + 12) {
+                    return drawnObjects[i];
+                }
+            }
+            return null;
+        }
+
+        function findObjectInBox(box) {
+            for (let i = drawnObjects.length - 1; i >= 0; i--) {
+                const b = drawnObjects[i].bounds;
+                const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+                if (cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h) {
+                    return drawnObjects[i];
+                }
+            }
+            return null;
+        }
+
+        function setSelectionFromObject(obj) {
+            selectedObject = obj;
+            selectionBox = { ...obj.bounds };
+            updateLastDetectedShape(obj.type, obj.points, obj.bounds);
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            drawSelectionMarquee(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+        }
+
+        function deleteSelectedRegion() {
+            hideContextMenu();
+            if (!selectionBox) return;
+            ctx.clearRect(selectionBox.x - 4, selectionBox.y - 4, selectionBox.w + 8, selectionBox.h + 8);
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            selectionBox = null;
+            selectedObject = null;
+            saveHistoryState();
+            showToast('បានលុបតំបន់ដែលបានជ្រើសរើស');
+        }
+
+        function contextShowSelectedIn3D(mode) {
+            hideContextMenu();
+            if (selectedObject) {
+                updateLastDetectedShape(selectedObject.type, selectedObject.points, selectedObject.bounds);
+            }
+            openModal('three-modal');
+            initThreeJS();
+            if (mode === 'hologram' && selectionBox) {
+                document.getElementById('three-shape-select').value = 'hologram';
+                build3DHologramFromRegion(selectionBox);
+            } else if (mode === 'lathe') {
+                document.getElementById('three-shape-select').value = 'revolve';
+                change3DShape('revolve');
+            } else {
+                document.getElementById('three-shape-select').value = 'extrude';
+                change3DShape('extrude');
+            }
+        }
+
+        // =====================================================================
+        // 6. TEXT TOOL
+        // =====================================================================
+        let pendingTextPos = { x: 100, y: 100 };
+
+        function openTextInputAt(screenX, screenY, boardX, boardY) {
+            pendingTextPos = { x: boardX, y: boardY };
+            const overlay = document.getElementById('text-input-overlay');
+            const input = document.getElementById('board-text-input');
+            overlay.style.left = `${Math.min(window.innerWidth - 300, Math.max(12, screenX))}px`;
+            overlay.style.top = `${Math.min(window.innerHeight - 130, Math.max(64, screenY))}px`;
+            overlay.classList.remove('hidden');
+            input.value = '';
+            setTimeout(() => input.focus(), 40);
+        }
+
+        function cancelTextInput() {
+            document.getElementById('text-input-overlay').classList.add('hidden');
+        }
+
+        function commitTextInput() {
+            const input = document.getElementById('board-text-input');
+            const text = input.value.trim();
+            const size = parseInt(document.getElementById('board-text-size').value, 10) || 32;
+            cancelTextInput();
+            if (!text) return;
+
+            ctx.save();
+            ctx.fillStyle = currentColor;
+            ctx.font = `600 ${size}px 'Kantumruy Pro', 'Inter', sans-serif`;
+            ctx.textBaseline = 'top';
+            ctx.fillText(text, pendingTextPos.x, pendingTextPos.y);
+            ctx.restore();
+            saveHistoryState();
+        }
+
+        document.getElementById('board-text-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') commitTextInput();
+            if (e.key === 'Escape') cancelTextInput();
+        });
+
+        // =====================================================================
+        // 7. INTERACTIVE ROTATABLE COORDINATE AXES (Oxy & Oxyz) & GRAPHS
+        // =====================================================================
+        let axesWidgetState = { mode: 'axes3d', rot2D: 0, yaw: -0.62, pitch: 0.42 };
+        let isRotatingAxesWidget = false;
+        let axesRotatePrev = { x: 0, y: 0 };
+
+        function drawArrowHead(targetCtx, fromX, fromY, toX, toY, headLen = 10) {
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            targetCtx.beginPath();
+            targetCtx.moveTo(toX, toY);
+            targetCtx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+            targetCtx.moveTo(toX, toY);
+            targetCtx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+            targetCtx.stroke();
+        }
+
+        function openInteractiveAxesWidget(mode, x, y, w, h) {
+            const widget = document.getElementById('interactive-axes-widget');
+            const titleEl = document.getElementById('axes-widget-title');
+            axesWidgetState.mode = mode;
+            axesWidgetState.rot2D = 0;
+            axesWidgetState.yaw = -0.62;
+            axesWidgetState.pitch = 0.42;
+
+            widget.style.left = `${Math.max(20, Math.min(canvas.width - w - 20, x))}px`;
+            widget.style.top = `${Math.max(50, Math.min(canvas.height - h - 20, y))}px`;
+            widget.style.width = `${w}px`;
+            widget.style.height = `${h}px`;
+            widget.classList.remove('hidden');
+
+            titleEl.innerHTML = mode === 'axes2d'
+                ? `<i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> តម្រុយអ័ក្ស (Oxy) • អូសដើម្បីបង្វិល`
+                : `<i data-lucide="rotate-3d" class="w-3.5 h-3.5"></i> អ័ក្សក្នុងលំហ (Oxyz) • អូសបង្វិល 3D`;
+            lucide.createIcons();
+            renderInteractiveAxesCanvas();
+        }
+
+        function closeInteractiveAxesWidget() {
+            document.getElementById('interactive-axes-widget').classList.add('hidden');
+        }
+
+        function renderInteractiveAxesCanvas() {
+            const widget = document.getElementById('interactive-axes-widget');
+            const aCanvas = document.getElementById('interactive-axes-canvas');
+            if (!widget || !aCanvas || widget.classList.contains('hidden')) return;
+
+            aCanvas.width = widget.clientWidth;
+            aCanvas.height = widget.clientHeight;
+            const aCtx = aCanvas.getContext('2d');
+            aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height);
+
+            const cx = aCanvas.width / 2;
+            const cy = aCanvas.height / 2;
+            const axisColor = currentTheme === 'whiteboard' ? '#0284c7' : '#38bdf8';
+
+            aCtx.save();
+            aCtx.strokeStyle = axisColor;
+            aCtx.fillStyle = axisColor;
+            aCtx.lineWidth = 2.4;
+            aCtx.font = "bold 14px 'Inter', sans-serif";
+
+            if (axesWidgetState.mode === 'axes2d') {
+                const len = Math.min(cx, cy) * 0.82;
+                const ang = axesWidgetState.rot2D;
+                const cosA = Math.cos(ang), sinA = Math.sin(ang);
+
+                const x1 = cx - len * cosA, y1 = cy - len * sinA;
+                const x2 = cx + len * cosA, y2 = cy + len * sinA;
+                aCtx.beginPath(); aCtx.moveTo(x1, y1); aCtx.lineTo(x2, y2); aCtx.stroke();
+                drawArrowHead(aCtx, x1, y1, x2, y2, 10);
+
+                const yx1 = cx + len * sinA, yy1 = cy - len * cosA;
+                const yx2 = cx - len * sinA, yy2 = cy + len * cosA;
+                aCtx.beginPath(); aCtx.moveTo(yx2, yy2); aCtx.lineTo(yx1, yy1); aCtx.stroke();
+                drawArrowHead(aCtx, yx2, yy2, yx1, yy1, 10);
+
+                aCtx.fillText('O', cx - 15, cy + 16);
+                aCtx.fillText('x', x2 + 6, y2 + 4);
+                aCtx.fillText('y', yx1 + 6, yy1 - 4);
+            } else {
+                const len = Math.min(cx, cy) * 0.78;
+                const cyaw = Math.cos(axesWidgetState.yaw), syaw = Math.sin(axesWidgetState.yaw);
+                const cp = Math.cos(axesWidgetState.pitch), sp = Math.sin(axesWidgetState.pitch);
+
+                const project3D = (vx, vy, vz) => {
+                    const rx = vx * cyaw - vy * syaw;
+                    const ry = vx * syaw + vy * cyaw;
+                    return {
+                        x: cx + ry * len,
+                        y: cy - vz * cp * len + rx * sp * len
+                    };
+                };
+
+                const pO = project3D(0, 0, 0);
+                const pX = project3D(1, 0, 0);
+                const pY = project3D(0, 1, 0);
+                const pZ = project3D(0, 0, 1);
+
+                aCtx.save();
+                aCtx.setLineDash([5, 5]);
+                aCtx.globalAlpha = 0.45;
+                aCtx.beginPath();
+                const pNegX = project3D(-0.7, 0, 0);
+                const pNegY = project3D(0, -0.7, 0);
+                const pNegZ = project3D(0, 0, -0.7);
+                aCtx.moveTo(pO.x, pO.y); aCtx.lineTo(pNegX.x, pNegX.y);
+                aCtx.moveTo(pO.x, pO.y); aCtx.lineTo(pNegY.x, pNegY.y);
+                aCtx.moveTo(pO.x, pO.y); aCtx.lineTo(pNegZ.x, pNegZ.y);
+                aCtx.stroke();
+                aCtx.restore();
+
+                const drawRay = (endPt, rayColor, label) => {
+                    aCtx.strokeStyle = rayColor;
+                    aCtx.fillStyle = rayColor;
+                    aCtx.beginPath();
+                    aCtx.moveTo(pO.x, pO.y);
+                    aCtx.lineTo(endPt.x, endPt.y);
+                    aCtx.stroke();
+                    drawArrowHead(aCtx, pO.x, pO.y, endPt.x, endPt.y, 10);
+                    aCtx.fillText(label, endPt.x + 6, endPt.y + 4);
+                };
+
+                drawRay(pX, '#f87171', 'x');
+                drawRay(pY, '#4ade80', 'y');
+                drawRay(pZ, '#38bdf8', 'z');
+
+                aCtx.fillStyle = axisColor;
+                aCtx.fillText('O', pO.x - 14, pO.y + 14);
+            }
+            aCtx.restore();
+        }
+
+        function stampInteractiveAxesToBoard() {
+            const widget = document.getElementById('interactive-axes-widget');
+            const aCanvas = document.getElementById('interactive-axes-canvas');
+            if (!widget || !aCanvas) return;
+            const x = (widget.offsetLeft - boardPan.x) / boardScale;
+            const y = (widget.offsetTop - boardPan.y) / boardScale;
+            const w = aCanvas.width / boardScale;
+            const h = aCanvas.height / boardScale;
+            ctx.drawImage(aCanvas, x, y, w, h);
+            const bounds = { x, y, w, h };
+            drawnObjects.push({
+                type: axesWidgetState.mode,
+                bounds,
+                points: generateShapeOutlinePoints('rect', x, y, x + w, y + h),
+                labelKh: getShapeLabelKh(axesWidgetState.mode)
+            });
+            saveHistoryState();
+            closeInteractiveAxesWidget();
+            showToast('បានដាក់តម្រុយអ័ក្សជាប់លើក្ដាខៀនរួចរាល់!');
+        }
+
+        function openInteractiveAxesIn3D() {
+            stampInteractiveAxesToBoard();
+            openModal('three-modal');
+            initThreeJS();
+            document.getElementById('three-shape-select').value = 'hologram';
+            change3DShape('hologram');
+        }
+
+        (function setupInteractiveAxesEvents() {
+            const widget = document.getElementById('interactive-axes-widget');
+            const header = document.getElementById('axes-widget-header');
+            const aCanvas = document.getElementById('interactive-axes-canvas');
+            if (!widget || !header || !aCanvas) return;
+
+            let movingWidget = false, moveOffset = { x: 0, y: 0 };
+
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.tagName === 'BUTTON') return;
+                movingWidget = true;
+                moveOffset = { x: e.clientX - widget.offsetLeft, y: e.clientY - widget.offsetTop };
+            });
+
+            aCanvas.addEventListener('mousedown', (e) => {
+                isRotatingAxesWidget = true;
+                axesRotatePrev = { x: e.clientX, y: e.clientY };
+            });
+            aCanvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isRotatingAxesWidget = true;
+                    axesRotatePrev = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            }, { passive: true });
+
+            window.addEventListener('mousemove', (e) => {
+                if (movingWidget) {
+                    widget.style.left = `${e.clientX - moveOffset.x}px`;
+                    widget.style.top = `${e.clientY - moveOffset.y}px`;
+                }
+                if (isRotatingAxesWidget) {
+                    const dx = e.clientX - axesRotatePrev.x;
+                    const dy = e.clientY - axesRotatePrev.y;
+                    if (axesWidgetState.mode === 'axes2d') {
+                        axesWidgetState.rot2D += dx * 0.015;
+                    } else {
+                        axesWidgetState.yaw += dx * 0.015;
+                        axesWidgetState.pitch = Math.max(-1.3, Math.min(1.3, axesWidgetState.pitch + dy * 0.015));
+                    }
+                    axesRotatePrev = { x: e.clientX, y: e.clientY };
+                    renderInteractiveAxesCanvas();
+                }
+            });
+
+            aCanvas.addEventListener('touchmove', (e) => {
+                if (!isRotatingAxesWidget || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - axesRotatePrev.x;
+                const dy = e.touches[0].clientY - axesRotatePrev.y;
+                if (axesWidgetState.mode === 'axes2d') {
+                    axesWidgetState.rot2D += dx * 0.018;
+                } else {
+                    axesWidgetState.yaw += dx * 0.018;
+                    axesWidgetState.pitch = Math.max(-1.3, Math.min(1.3, axesWidgetState.pitch + dy * 0.018));
+                }
+                axesRotatePrev = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                renderInteractiveAxesCanvas();
+            }, { passive: true });
+
+            window.addEventListener('mouseup', () => { movingWidget = false; isRotatingAxesWidget = false; });
+            window.addEventListener('touchend', () => { isRotatingAxesWidget = false; });
+        })();
+
+        function drawCoordinateAxes2D(targetCtx, x, y, w, h, color, lineWidth = 2) {
+            const cx = x + w / 2, cy = y + h / 2;
+            targetCtx.save();
+            targetCtx.strokeStyle = color;
+            targetCtx.fillStyle = color;
+            targetCtx.lineWidth = lineWidth;
+            targetCtx.font = "bold 13px 'Inter', sans-serif";
+
+            // X and Y axes
+            targetCtx.beginPath();
+            targetCtx.moveTo(x, cy); targetCtx.lineTo(x + w, cy);
+            targetCtx.moveTo(cx, y + h); targetCtx.lineTo(cx, y);
+            targetCtx.stroke();
+            drawArrowHead(targetCtx, x, cy, x + w, cy, 9);
+            drawArrowHead(targetCtx, cx, y + h, cx, y, 9);
+
+            // Unit ticks
+            const unit = 32;
+            for (let gx = cx + unit; gx < x + w - 14; gx += unit) {
+                targetCtx.beginPath(); targetCtx.moveTo(gx, cy - 4); targetCtx.lineTo(gx, cy + 4); targetCtx.stroke();
+            }
+            for (let gx = cx - unit; gx > x + 14; gx -= unit) {
+                targetCtx.beginPath(); targetCtx.moveTo(gx, cy - 4); targetCtx.lineTo(gx, cy + 4); targetCtx.stroke();
+            }
+            for (let gy = cy - unit; gy > y + 14; gy -= unit) {
+                targetCtx.beginPath(); targetCtx.moveTo(cx - 4, gy); targetCtx.lineTo(cx + 4, gy); targetCtx.stroke();
+            }
+            for (let gy = cy + unit; gy < y + h - 14; gy += unit) {
+                targetCtx.beginPath(); targetCtx.moveTo(cx - 4, gy); targetCtx.lineTo(cx + 4, gy); targetCtx.stroke();
+            }
+
+            targetCtx.fillText('O', cx - 15, cy + 16);
+            targetCtx.fillText('x', x + w - 10, cy + 16);
+            targetCtx.fillText('y', cx + 8, y + 14);
+            targetCtx.restore();
+        }
+
+        function compileMathFunction(exprStr) {
+            const sanitized = exprStr
+                .replace(/\^/g, '**')
+                .replace(/(\d)(x)/gi, '$1*$2')
+                .replace(/(x)(\()/gi, '$1*$2');
+            return new Function('x', `with (Math) { return ${sanitized}; }`);
+        }
+
+        function plotFunctionGraphToBoard() {
+            const fnStr = document.getElementById('graph-fn-input').value.trim();
+            const includeAxes = document.getElementById('graph-include-axes').checked;
+            if (!fnStr) return;
+
+            let fn;
+            try {
+                fn = compileMathFunction(fnStr);
+                fn(1);
+            } catch (err) {
+                showToast('រូបមន្តអនុគមន៍មិនត្រឹមត្រូវ សូមពិនិត្យម្ដងទៀត');
+                return;
+            }
+
+            closeModal('graph-space-modal');
+            const w = Math.min(440, canvas.width * 0.65);
+            const h = Math.min(340, canvas.height * 0.58);
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+            const cx = x + w / 2, cy = y + h / 2;
+            const unit = 32;
+
+            if (includeAxes) {
+                drawCoordinateAxes2D(ctx, x, y, w, h, currentTheme === 'whiteboard' ? '#475569' : '#94a3b8', 1.8);
+            }
+
+            ctx.save();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            let started = false;
+            const curvePts = [];
+            for (let px = x + 10; px <= x + w - 10; px += 2) {
+                const mathX = (px - cx) / unit;
+                let mathY;
+                try { mathY = fn(mathX); } catch (e) { continue; }
+                if (typeof mathY !== 'number' || !isFinite(mathY)) { started = false; continue; }
+                const py = cy - mathY * unit;
+                if (py < y || py > y + h) { started = false; continue; }
+                if (!started) { ctx.moveTo(px, py); started = true; }
+                else { ctx.lineTo(px, py); }
+                curvePts.push({ x: px, y: py });
+            }
+            ctx.stroke();
+
+            ctx.fillStyle = '#38bdf8';
+            ctx.font = "bold 15px 'Inter', sans-serif";
+            ctx.fillText(`y = ${fnStr}`, x + 14, y + 22);
+            ctx.restore();
+
+            const bounds = { x, y, w, h };
+            drawnObjects.push({ type: 'polygon', bounds, points: curvePts.length ? curvePts : generateShapeOutlinePoints('rect', x, y, x + w, y + h), labelKh: `ក្រាប y = ${fnStr}` });
+            updateLastDetectedShape('polygon', curvePts, bounds);
+            saveHistoryState();
+            showToast(`បានគូសក្រាប y = ${fnStr} លើក្ដាខៀន!`);
+        }
+
+        function insertPresetAxes(type) {
+            const w = Math.min(380, canvas.width * 0.55);
+            const h = Math.min(320, canvas.height * 0.55);
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+
+            if (type === 'axes2d' || type === 'axes3d') {
+                closeModal('graph-space-modal');
+                openInteractiveAxesWidget(type, x, y, w, h);
+                showToast('អូសលើអ័ក្សដោយផ្ទាល់ដើម្បីបង្វិល 360° ឬចុច «ដាក់ជាប់ក្ដា»');
+                return;
+            } else if (type === 'unitcircle') {
+                closeModal('graph-space-modal');
+                const r = Math.min(w, h) * 0.35;
+                const cx = x + w / 2, cy = y + h / 2;
+                drawCoordinateAxes2D(ctx, x, y, w, h, currentColor, 2);
+                ctx.save();
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = '#fbbf24';
+                ctx.font = "bold 12px 'Inter', sans-serif";
+                ctx.fillText('1', cx + r + 5, cy - 5);
+                ctx.fillText('1', cx + 5, cy - r - 5);
+                ctx.restore();
+                saveHistoryState();
+                showToast('បានបញ្ចូលរង្វង់ត្រីកោណមាត្រ!');
+            }
+        }
+
+        function insert3DSpaceSolid(solidType) {
+            closeModal('graph-space-modal');
+            const w = 220, h = 220;
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+
+            ctx.save();
+            ctx.strokeStyle = currentColor;
+            ctx.lineWidth = 2.4;
+            ctx.lineJoin = 'round';
+
+            if (solidType === 'cube') {
+                const s = 120, off = 42;
+                const fx = x + 30, fy = y + 60;
+                const bx = fx + off, by = fy - off;
+                ctx.strokeRect(fx, fy, s, s);
+                // Top and right visible edges
+                ctx.beginPath();
+                ctx.moveTo(fx, fy); ctx.lineTo(bx, by);
+                ctx.lineTo(bx + s, by); ctx.lineTo(fx + s, fy);
+                ctx.moveTo(bx + s, by); ctx.lineTo(bx + s, by + s);
+                ctx.lineTo(fx + s, fy + s);
+                ctx.stroke();
+                // Dashed hidden edges
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(bx, by); ctx.lineTo(bx, by + s);
+                ctx.lineTo(fx, fy + s);
+                ctx.moveTo(bx, by + s); ctx.lineTo(bx + s, by + s);
+                ctx.stroke();
+            } else if (solidType === 'cylinder') {
+                const cx = x + w / 2, topY = y + 45, botY = y + 175, rx = 60, ry = 18;
+                ctx.beginPath();
+                ctx.ellipse(cx, topY, rx, ry, 0, 0, Math.PI * 2);
+                ctx.moveTo(cx - rx, topY); ctx.lineTo(cx - rx, botY);
+                ctx.moveTo(cx + rx, topY); ctx.lineTo(cx + rx, botY);
+                ctx.ellipse(cx, botY, rx, ry, 0, 0, Math.PI);
+                ctx.stroke();
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.ellipse(cx, botY, rx, ry, 0, Math.PI, Math.PI * 2);
+                ctx.stroke();
+            } else if (solidType === 'cone') {
+                const cx = x + w / 2, apexY = y + 35, botY = y + 175, rx = 65, ry = 20;
+                ctx.beginPath();
+                ctx.moveTo(cx, apexY); ctx.lineTo(cx - rx, botY);
+                ctx.moveTo(cx, apexY); ctx.lineTo(cx + rx, botY);
+                ctx.ellipse(cx, botY, rx, ry, 0, 0, Math.PI);
+                ctx.stroke();
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.ellipse(cx, botY, rx, ry, 0, Math.PI, Math.PI * 2);
+                ctx.moveTo(cx, apexY); ctx.lineTo(cx, botY);
+                ctx.stroke();
+            } else if (solidType === 'pyramid') {
+                const apex = { x: x + 110, y: y + 32 };
+                const p1 = { x: x + 40, y: y + 165 };
+                const p2 = { x: x + 145, y: y + 185 };
+                const p3 = { x: x + 190, y: y + 140 };
+                const p4 = { x: x + 85, y: y + 125 };
+                ctx.beginPath();
+                ctx.moveTo(apex.x, apex.y); ctx.lineTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+                ctx.closePath();
+                ctx.moveTo(apex.x, apex.y); ctx.lineTo(p2.x, p2.y);
+                ctx.stroke();
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(apex.x, apex.y); ctx.lineTo(p4.x, p4.y);
+                ctx.lineTo(p1.x, p1.y);
+                ctx.moveTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y);
+                ctx.stroke();
+            } else if (solidType === 'sphere') {
+                const cx = x + w / 2, cy = y + h / 2, r = 72;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.ellipse(cx, cy, r, r * 0.3, 0, 0, Math.PI);
+                ctx.stroke();
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, r, r * 0.3, 0, Math.PI, Math.PI * 2);
+                ctx.stroke();
+            } else if (solidType === 'prism') {
+                const t1 = { x: x + 95, y: y + 30 }, t2 = { x: x + 45, y: y + 75 }, t3 = { x: x + 165, y: y + 75 };
+                const b1 = { x: x + 95, y: y + 135 }, b2 = { x: x + 45, y: y + 180 }, b3 = { x: x + 165, y: y + 180 };
+                ctx.beginPath();
+                ctx.moveTo(t1.x, t1.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t3.x, t3.y); ctx.closePath();
+                ctx.moveTo(t2.x, t2.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(b3.x, b3.y); ctx.lineTo(t3.x, t3.y);
+                ctx.stroke();
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(t1.x, t1.y); ctx.lineTo(b1.x, b1.y);
+                ctx.lineTo(b2.x, b2.y);
+                ctx.moveTo(b1.x, b1.y); ctx.lineTo(b3.x, b3.y);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            const bounds = { x, y, w, h };
+            const pts = generateShapeOutlinePoints('rect', x, y, x + w, y + h);
+            drawnObjects.push({ type: solidType, bounds, points: pts, labelKh: 'រូបធរណីមាត្រក្នុងលំហ' });
+            updateLastDetectedShape(solidType, pts, bounds);
+            saveHistoryState();
+            showToast('បានគូសរូបធរណីមាត្រក្នុងលំហលើក្ដាខៀន!');
+        }
+
+        // =====================================================================
+        // 8. HANDWRITTEN MATH AI (= TRIGGER, FRACTIONS & GRAPH/3D ACTIONS)
+        // =====================================================================
+        function trackStrokeForMathAI(pts, bounds) {
+            if (!aiMathEnabled) return;
+            recentMathStrokes.push({ pts, bounds, time: Date.now() });
+            // Keep strokes from last 25 seconds
+            const cutoff = Date.now() - 25000;
+            recentMathStrokes = recentMathStrokes.filter(s => s.time >= cutoff);
+
+            if (mathAutoTimer) clearTimeout(mathAutoTimer);
+            // Detect if last two short horizontal strokes form an '=' sign
+            if (recentMathStrokes.length >= 2) {
+                const s1 = recentMathStrokes[recentMathStrokes.length - 2].bounds;
+                const s2 = recentMathStrokes[recentMathStrokes.length - 1].bounds;
+                const isHorizontal1 = s1.w > 14 && s1.h < s1.w * 0.65;
+                const isHorizontal2 = s2.w > 14 && s2.h < s2.w * 0.65;
+                const alignedX = Math.abs((s1.x + s1.w / 2) - (s2.x + s2.w / 2)) < Math.max(s1.w, s2.w) * 0.8;
+                const stackedY = Math.abs(s1.y - s2.y) > 3 && Math.abs(s1.y - s2.y) < 36;
+
+                if (isHorizontal1 && isHorizontal2 && alignedX && stackedY) {
+                    mathAutoTimer = setTimeout(() => {
+                        const eqRegion = computeRecentMathRegion();
+                        triggerHandwrittenMathSolve(eqRegion);
+                    }, 650);
+                }
+            }
+        }
+
+        function computeRecentMathRegion() {
+            if (recentMathStrokes.length === 0) return null;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let maxDigitH = 28;
+            for (let i = 0; i < recentMathStrokes.length; i++) {
+                const b = recentMathStrokes[i].bounds;
+                minX = Math.min(minX, b.x);
+                minY = Math.min(minY, b.y);
+                maxX = Math.max(maxX, b.x + b.w);
+                maxY = Math.max(maxY, b.y + b.h);
+                if (i < recentMathStrokes.length - 2) {
+                    maxDigitH = Math.max(maxDigitH, b.h);
+                }
+            }
+            const lastTwo = recentMathStrokes.slice(-2);
+            const eqRightX = Math.max(...lastTwo.map(s => s.bounds.x + s.bounds.w));
+            const eqCenterY = lastTwo.reduce((acc, s) => acc + s.bounds.y + s.bounds.h / 2, 0) / lastTwo.length;
+
+            return {
+                x: Math.max(0, minX - 24),
+                y: Math.max(0, minY - 24),
+                w: Math.min(canvas.width, maxX - minX + 48),
+                h: Math.min(canvas.height, maxY - minY + 48),
+                eqRightX,
+                eqCenterY,
+                digitHeight: Math.max(24, Math.min(72, maxDigitH))
+            };
+        }
+
+        async function triggerHandwrittenMathSolve(customRegion) {
+            if (isAIProcessingMath) return;
+
+            const apiKey = getStoredApiKey();
+            if (!apiKey) {
+                showToast('🔑 សូមបញ្ចូល Gemini API Key (Free) ដើម្បីប្រើប្រាស់មុខងារ AI គណនា');
+                openModal('api-key-modal');
+                return;
+            }
+
+            const region = customRegion || computeRecentMathRegion() || {
+                x: 0,
+                y: 0,
+                w: canvas.width,
+                h: canvas.height,
+                eqRightX: canvas.width * 0.55,
+                eqCenterY: canvas.height * 0.45,
+                digitHeight: 36
+            };
+
+            isAIProcessingMath = true;
+            const pill = document.getElementById('ai-math-status-pill');
+            if (pill) pill.innerText = 'AI គណនា (=): កំពុងវិភាគ...';
+
+            try {
+                // Create snapshot for Gemini Vision
+                const snap = document.createElement('canvas');
+                snap.width = Math.max(60, Math.round(region.w));
+                snap.height = Math.max(60, Math.round(region.h));
+                const sCtx = snap.getContext('2d');
+                sCtx.fillStyle = themes[themeIndex].bg;
+                sCtx.fillRect(0, 0, snap.width, snap.height);
+                sCtx.drawImage(canvas, region.x, region.y, region.w, region.h, 0, 0, snap.width, snap.height);
+                const base64Data = snap.toDataURL('image/png').split(',')[1];
+
+                const prompt = `You are a math OCR, algebraic equation solver, and function graph analyzer for a smart whiteboard.
+Look at the handwritten math expression, equation, or function in this image (e.g., "3y + 5 = 5", "2x - 4 = 0", "y = 2x + 1", "y = x^2 - 2", or arithmetic like "1/2 + 1/4 =").
+1. Read the expression/equation accurately (converting Khmer digits ០១២៣៤៥៦៧៨៩ to 0-9).
+2. If it is an equation with one variable (like "3y + 5 = 5" or "2x + 6 = 0"), solve for the variable (e.g. "y = 0" or "x = -3") and also provide a plottable JS function expression in terms of x (for "3y + 5 = 5" => y = 0 => plottableFn: "0"; for "2x - 4 = 0" => x = 2 => plottableFn: "").
+3. If it is a function of x (like "y = 2x + 1" or "f(x) = x^2 - 2"), set displayAnswer to the simplified function and plottableFn to standard JS math syntax using x (e.g. "2*x + 1", "x^2 - 2").
+4. If it is an arithmetic expression, calculate the exact answer (including simplified fraction if non-integer).
+5. Return ONLY valid JSON with this exact structure:
+{"expression": "detected expression", "answer": "exact solution or value", "fraction": "simplified fraction if applicable else empty string", "displayAnswer": "best formatted solution (e.g. 'y = 0' or '3/4' or '42')", "isEquationOrFunction": true/false, "plottableFn": "RHS in terms of x if plottable on Oxy else empty string", "suggested3D": "cylinder|cone|sphere|cube|revolve|extrude"}`;
+
+                const model = getStoredModel();
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                const payload = {
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { text: prompt },
+                            { inlineData: { mimeType: 'image/png', data: base64Data } }
+                        ]
+                    }],
+                    generationConfig: { responseMimeType: 'application/json' }
+                };
+
+                let responseData = null;
+                let delay = 1000;
+                let lastError = null;
+
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const res = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        responseData = await res.json();
+                        break;
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        lastError = err?.error?.message || `Status ${res.status}`;
+                        if (res.status === 400 || res.status === 403) {
+                            // Invalid key or permission error
+                            break;
+                        }
+                    }
+                    if (attempt < 2) {
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2;
+                    }
+                }
+
+                if (!responseData) {
+                    if (pill) pill.innerText = 'AI គណនា (=): កំហុស API';
+                    showToast(`❌ កំហុស API៖ ${lastError || 'សូមពិនិត្យមើល API Key'}`);
+                    openModal('api-key-modal');
+                    return;
+                }
+
+                const rawText = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                const parsed = JSON.parse(rawText);
+
+                if (parsed && parsed.answer && parsed.answer !== 'unknown') {
+                    const finalOutput = parsed.displayAnswer || (parsed.fraction ? `${parsed.fraction} (${parsed.answer})` : String(parsed.answer));
+                    writeAIAnswerNextToEquals(finalOutput, region);
+                    if (pill) pill.innerText = `AI គណនា: ${parsed.expression} → ${finalOutput}`;
+                    showToast(`ចម្លើយ AI៖ ${parsed.expression} → ${finalOutput}`);
+
+                    lastAIDetectedEquation = parsed;
+                    if (parsed.isEquationOrFunction || /[xy]/i.test(parsed.expression || '')) {
+                        showAIEquationActionBar(parsed, finalOutput);
+                    }
+
+                    const speakStr = parsed.fraction
+                        ? `ចម្លើយគឺ ប្រភាគ ${parsed.fraction.replace('/', ' ភាគ ')}`
+                        : `ចម្លើយគឺ ${finalOutput}`;
+                    speakText(speakStr);
+                    recentMathStrokes = [];
+                } else {
+                    if (pill) pill.innerText = 'AI គណនា (=): មិនអាចអានលេខបានច្បាស់';
+                    showToast('AI មិនអាចស្គាល់កន្សោមលេខបានច្បាស់ សូមសរសេរឱ្យច្បាស់ជាងមុន');
+                }
+            } catch (err) {
+                if (pill) pill.innerText = 'AI គណនា (=): រួចរាល់';
+                showToast('មានបញ្ហាក្នុងការភ្ជាប់ AI គណនា សូមព្យាយាមម្ដងទៀត');
+            } finally {
+                isAIProcessingMath = false;
+            }
+        }
+
+        function writeAIAnswerNextToEquals(answerText, region) {
+            const fontSize = Math.round((region.digitHeight || 36) * 0.95);
+            const drawX = Math.min(canvas.width - 140, (region.eqRightX || 260) + 14);
+            const drawY = region.eqCenterY || 200;
+
+            ctx.save();
+            ctx.fillStyle = currentTheme === 'whiteboard' ? '#059669' : '#4ade80';
+            ctx.font = `bold ${fontSize}px 'Kantumruy Pro', 'Inter', sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(answerText, drawX, drawY);
+            ctx.restore();
+            saveHistoryState();
+        }
+
+        function showAIEquationActionBar(parsed, finalOutput) {
+            const bar = document.getElementById('ai-equation-action-bar');
+            const summary = document.getElementById('ai-eq-summary-text');
+            const graphBtn = document.getElementById('btn-ai-plot-graph');
+            if (!bar || !summary) return;
+
+            summary.innerText = `${parsed.expression}  ⇒  ${finalOutput}`;
+            if (parsed.plottableFn && parsed.plottableFn.trim() !== '') {
+                graphBtn.classList.remove('hidden');
+            } else {
+                graphBtn.classList.add('hidden');
+            }
+            bar.classList.remove('hidden');
+        }
+
+        function plotDetectedEquationGraph() {
+            if (!lastAIDetectedEquation || !lastAIDetectedEquation.plottableFn) return;
+            document.getElementById('graph-fn-input').value = lastAIDetectedEquation.plottableFn;
+            document.getElementById('graph-include-axes').checked = true;
+            document.getElementById('ai-equation-action-bar').classList.add('hidden');
+            plotFunctionGraphToBoard();
+        }
+
+        function showDetectedEquation3D() {
+            document.getElementById('ai-equation-action-bar').classList.add('hidden');
+            openModal('three-modal');
+            initThreeJS();
+
+            const fnStr = (lastAIDetectedEquation?.plottableFn || '').trim();
+            if (fnStr !== '') {
+                try {
+                    const fn = compileMathFunction(fnStr);
+                    const lathePts = [];
+                    for (let x = -2.2; x <= 2.2; x += 0.15) {
+                        const yVal = fn(x);
+                        if (typeof yVal === 'number' && isFinite(yVal)) {
+                            const r = Math.max(0.05, Math.min(2.2, Math.abs(yVal) * 0.45 + 0.15));
+                            lathePts.push(new THREE.Vector2(r, x * 0.65));
+                        }
+                    }
+                    if (lathePts.length >= 3) {
+                        set3DMeshGeometry(new THREE.LatheGeometry(lathePts, 40));
+                        document.getElementById('three-shape-select').value = 'revolve';
+                        document.getElementById('three-subtitle').innerText = `រូប 3D បង្វិលពីអនុគមន៍៖ y = ${fnStr}`;
+                        document.getElementById('formula-title').innerText = `សមីការអនុគមន៍៖ y = ${fnStr}`;
+                        document.getElementById('formula-volume').innerText = 'បង្កើតដោយបង្វិលខ្សែកោងជុំវិញអ័ក្ស 360°';
+                        document.getElementById('formula-area').innerText = `ដំណោះស្រាយ៖ ${lastAIDetectedEquation.displayAnswer || ''}`;
+                        return;
+                    }
+                } catch (e) {}
+            }
+
+            const suggested = lastAIDetectedEquation?.suggested3D || 'cylinder';
+            document.getElementById('three-shape-select').value = suggested;
+            document.getElementById('three-subtitle').innerText = `គំរូ 3D ពីសមីការ៖ ${lastAIDetectedEquation?.expression || ''}`;
+            change3DShape(suggested);
+        }
+
+        // =====================================================================
+        // 9. AUTO 3D STUDIO (THREE.JS - EXACT SHAPE MATCH & CLEAN WIREFRAME)
+        // =====================================================================
+        let threeScene = null, threeCamera = null, threeRenderer = null;
+        let current3DMesh = null;
+        let threeColor = '#10b981';
+        let threeWireframe = false;
+        let threeAutoRotate = true;
+        let threeDepth = 1.0;
+        let isDragging3D = false, prevMouse3D = { x: 0, y: 0 };
+
+        const shapeFormulasKh = {
+            cube: { title: 'ប្រអប់កែង / គូប (Box / Cube)', vol: 'V = a × b × h', area: 'S = 2(ab + bh + ah)' },
+            sphere: { title: 'ស្វ៊ែរ / អេលីបសូអ៊ីត (Sphere)', vol: 'V = (4/3)πr³', area: 'S = 4πr²' },
+            cylinder: { title: 'ស៊ីឡាំង (Cylinder)', vol: 'V = πr²h', area: 'S = 2πr(r + h)' },
+            cone: { title: 'កោណ (Cone)', vol: 'V = (1/3)πr²h', area: 'S = πr(r + l)' },
+            pyramid: { title: 'ពីរ៉ាមីត (Pyramid)', vol: 'V = (1/3) × S_បាត × h', area: 'S = S_បាត + S_ខាង' },
+            revolve: { title: 'រូបបង្វិល 360° (Lathe 3D)', vol: 'V = π ∫ [f(x)]² dx', area: 'S = 2π ∫ f(x)√(1+[f\'(x)]²) dx' },
+            extrude: { title: 'គំរូ 3D ដូចរូបដើម (Exact 3D Match)', vol: 'V = S_ផ្ទៃមុខ × កម្រាស់ (d)', area: 'S = 2S_មុខ + P × d' },
+            hologram: { title: 'ផ្ទាំងរូបភាព 3D ក្នុងលំហ', vol: 'បង្ហាញរូបភាពដែលបានជ្រើសក្នុងលំហ 3D', area: 'អាចបង្វិលមើលគ្រប់ជ្រុង' }
+        };
+
+        function initThreeJS() {
+            const container = document.getElementById('three-canvas-container');
+            if (!container) return;
+
+            if (!threeRenderer) {
+                threeScene = new THREE.Scene();
+                threeCamera = new THREE.PerspectiveCamera(45, (container.clientWidth || 500) / (container.clientHeight || 340), 0.1, 100);
+                threeCamera.position.set(0, 0.8, 4.6);
+                threeCamera.lookAt(0, 0, 0);
+
+                threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+                threeRenderer.setSize(container.clientWidth || 500, container.clientHeight || 340);
+                threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+                container.innerHTML = '';
+                container.appendChild(threeRenderer.domElement);
+
+                const ambLight = new THREE.AmbientLight(0xffffff, 0.75);
+                const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.95);
+                dirLight1.position.set(5, 8, 6);
+                const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 0.45);
+                dirLight2.position.set(-5, -4, -4);
+                threeScene.add(ambLight, dirLight1, dirLight2);
+
+                const dom = threeRenderer.domElement;
+                dom.addEventListener('mousedown', (e) => { isDragging3D = true; prevMouse3D = { x: e.clientX, y: e.clientY }; });
+                window.addEventListener('mousemove', (e) => {
+                    if (!isDragging3D || !current3DMesh) return;
+                    current3DMesh.rotation.y += (e.clientX - prevMouse3D.x) * 0.012;
+                    current3DMesh.rotation.x += (e.clientY - prevMouse3D.y) * 0.012;
+                    prevMouse3D = { x: e.clientX, y: e.clientY };
+                });
+                window.addEventListener('mouseup', () => { isDragging3D = false; });
+
+                dom.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 1) { isDragging3D = true; prevMouse3D = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+                }, { passive: true });
+                dom.addEventListener('touchmove', (e) => {
+                    if (!isDragging3D || e.touches.length !== 1 || !current3DMesh) return;
+                    current3DMesh.rotation.y += (e.touches[0].clientX - prevMouse3D.x) * 0.014;
+                    current3DMesh.rotation.x += (e.touches[0].clientY - prevMouse3D.y) * 0.014;
+                    prevMouse3D = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }, { passive: true });
+                dom.addEventListener('touchend', () => { isDragging3D = false; });
+
+                dom.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    threeCamera.position.z = Math.max(2.0, Math.min(9.0, threeCamera.position.z + e.deltaY * 0.003));
+                }, { passive: false });
+
+                animateThreeLoop();
+            } else {
+                const w = container.clientWidth || 500;
+                const h = container.clientHeight || 340;
+                threeCamera.aspect = w / h;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(w, h);
+            }
+        }
+
+        function animateThreeLoop() {
+            requestAnimationFrame(animateThreeLoop);
+            if (current3DMesh && threeAutoRotate && !isDragging3D) {
+                current3DMesh.rotation.y += 0.01;
+            }
+            if (threeRenderer && threeScene && threeCamera) {
+                threeRenderer.render(threeScene, threeCamera);
+            }
+        }
+
+        function set3DMeshGeometry(geometry) {
+            if (current3DMesh) threeScene.remove(current3DMesh);
+            geometry.center();
+            const mat = new THREE.MeshStandardMaterial({
+                color: threeColor,
+                roughness: 0.28,
+                metalness: 0.15,
+                visible: !threeWireframe,
+                side: THREE.DoubleSide
+            });
+            current3DMesh = new THREE.Mesh(geometry, mat);
+
+            // Clean edges only (no diagonal triangle lines)
+            const edgesGeo = new THREE.EdgesGeometry(geometry, 22);
+            const edgeLines = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({ color: threeColor }));
+            edgeLines.name = 'cleanEdges';
+            edgeLines.visible = threeWireframe;
+            current3DMesh.add(edgeLines);
+
+            threeScene.add(current3DMesh);
+        }
+
+        function open3DStudioFromBoard() {
+            openModal('three-modal');
+            initThreeJS();
+            document.getElementById('three-shape-select').value = 'extrude';
+            change3DShape('extrude');
+        }
+
+        function change3DShape(type) {
+            const info = shapeFormulasKh[type] || shapeFormulasKh.extrude;
+            document.getElementById('formula-title').innerText = info.title;
+            document.getElementById('formula-volume').innerText = info.vol;
+            document.getElementById('formula-area').innerText = info.area;
+
+            const b = lastDetectedShape.bounds || { w: 160, h: 140 };
+            const aspect = Math.max(0.4, Math.min(2.4, (b.w || 160) / (b.h || 140)));
+
+            if (type === 'extrude') {
+                // Build exact 3D match from last drawn shape
+                if (lastDetectedShape.type === 'circle') {
+                    const geo = new THREE.SphereGeometry(1.15, 36, 28);
+                    geo.scale(aspect >= 1 ? 1.15 : aspect, aspect >= 1 ? 1 / aspect : 1.15, threeDepth);
+                    set3DMeshGeometry(geo);
+                } else if (lastDetectedShape.type === 'rect') {
+                    const geo = new THREE.BoxGeometry(1.8 * Math.min(1.4, aspect), 1.8 / Math.min(1.4, aspect), 1.2 * threeDepth);
+                    set3DMeshGeometry(geo);
+                } else if (lastDetectedShape.type === 'triangle') {
+                    const shape = new THREE.Shape();
+                    const hw = 1.1 * Math.min(1.4, aspect);
+                    const hh = 1.1 / Math.min(1.4, aspect);
+                    shape.moveTo(0, hh);
+                    shape.lineTo(hw, -hh);
+                    shape.lineTo(-hw, -hh);
+                    shape.closePath();
+                    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1.0 * threeDepth, bevelEnabled: false });
+                    set3DMeshGeometry(geo);
+                } else if (lastDetectedShape.points && lastDetectedShape.points.length >= 3) {
+                    const pts = lastDetectedShape.points;
+                    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+                    const scale = 2.2 / Math.max(b.w, b.h, 1);
+                    const shape = new THREE.Shape();
+                    pts.forEach((p, idx) => {
+                        const sx = (p.x - cx) * scale;
+                        const sy = -(p.y - cy) * scale;
+                        if (idx === 0) shape.moveTo(sx, sy);
+                        else shape.lineTo(sx, sy);
+                    });
+                    shape.closePath();
+                    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.9 * threeDepth, bevelEnabled: false });
+                    set3DMeshGeometry(geo);
+                } else {
+                    set3DMeshGeometry(new THREE.BoxGeometry(1.7, 1.7, 1.7 * threeDepth));
+                }
+            } else if (type === 'cube') {
+                set3DMeshGeometry(new THREE.BoxGeometry(1.7, 1.7, 1.7 * threeDepth));
+            } else if (type === 'sphere') {
+                set3DMeshGeometry(new THREE.SphereGeometry(1.25, 36, 28));
+            } else if (type === 'cylinder') {
+                set3DMeshGeometry(new THREE.CylinderGeometry(0.95, 0.95, 2.0 * threeDepth, 36));
+            } else if (type === 'cone') {
+                set3DMeshGeometry(new THREE.ConeGeometry(1.1, 2.2 * threeDepth, 36));
+            } else if (type === 'pyramid') {
+                set3DMeshGeometry(new THREE.ConeGeometry(1.2, 2.1 * threeDepth, 4));
+            } else if (type === 'revolve') {
+                const lathePts = [];
+                for (let i = 0; i <= 16; i++) {
+                    const t = (i / 16) * Math.PI;
+                    lathePts.push(new THREE.Vector2(Math.sin(t) * 0.95 + 0.15, (i / 16 - 0.5) * 2.2 * threeDepth));
+                }
+                set3DMeshGeometry(new THREE.LatheGeometry(lathePts, 36));
+            } else if (type === 'hologram') {
+                build3DHologramFromRegion(selectionBox || lastDetectedShape.bounds);
+            }
+        }
+
+        function build3DHologramFromRegion(box) {
+            const snap = document.createElement('canvas');
+            snap.width = Math.max(80, Math.round(box.w || 200));
+            snap.height = Math.max(80, Math.round(box.h || 200));
+            const sCtx = snap.getContext('2d');
+            sCtx.fillStyle = themes[themeIndex].bg;
+            sCtx.fillRect(0, 0, snap.width, snap.height);
+            sCtx.drawImage(canvas, box.x || 0, box.y || 0, snap.width, snap.height, 0, 0, snap.width, snap.height);
+
+            const tex = new THREE.CanvasTexture(snap);
+            if (current3DMesh) threeScene.remove(current3DMesh);
+            const geo = new THREE.BoxGeometry(2.4, 2.4 * (snap.height / snap.width), 0.14 * threeDepth);
+            const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4 });
+            current3DMesh = new THREE.Mesh(geo, mat);
+            threeScene.add(current3DMesh);
+        }
+
+        function update3DDepth(val) {
+            threeDepth = parseFloat(val) || 1.0;
+            document.getElementById('extrude-depth-val').innerText = threeDepth.toFixed(1);
+            change3DShape(document.getElementById('three-shape-select').value);
+        }
+
+        function set3DColor(hex) {
+            threeColor = hex;
+            if (current3DMesh) {
+                if (current3DMesh.material && !current3DMesh.material.map) {
+                    current3DMesh.material.color.set(hex);
+                }
+                const edges = current3DMesh.getObjectByName('cleanEdges');
+                if (edges) edges.material.color.set(hex);
+            }
+        }
+
+        function toggle3DWireframe() {
+            threeWireframe = !threeWireframe;
+            const btn = document.getElementById('btn-wireframe');
+            btn.classList.toggle('bg-cyan-600/30', threeWireframe);
+            if (current3DMesh) {
+                current3DMesh.material.visible = !threeWireframe;
+                const edges = current3DMesh.getObjectByName('cleanEdges');
+                if (edges) edges.visible = threeWireframe;
+            }
+        }
+
+        function toggle3DAutoRotate() {
+            threeAutoRotate = !threeAutoRotate;
+            const btn = document.getElementById('btn-autorotate');
+            btn.classList.toggle('opacity-50', !threeAutoRotate);
+        }
+
+        function stamp3DToWhiteboard() {
+            if (!threeRenderer || !threeScene || !threeCamera) return;
+            threeRenderer.render(threeScene, threeCamera);
+            const dataUrl = threeRenderer.domElement.toDataURL('image/png');
+            const img = new Image();
+            img.onload = () => {
+                const w = 260, h = Math.round(260 * (img.height / img.width));
+                const x = (canvas.width - w) / 2;
+                const y = (canvas.height - h) / 2;
+                // Draw frameless transparent 3D object directly onto board
+                ctx.drawImage(img, x, y, w, h);
+                saveHistoryState();
+                closeModal('three-modal');
+                showToast('បានបញ្ចូលគំរូ 3D ទៅលើក្ដាខៀនដោយគ្មានស៊ុម!');
+            };
+            img.src = dataUrl;
+        }
+
+        // =====================================================================
+        // 10. CLASSROOM TOOLS, SMART CALCULATOR & READ ALOUD
+        // =====================================================================
+        function showMathRuler() {
+            const ruler = document.getElementById('math-ruler-widget');
+            const ticks = document.getElementById('ruler-ticks');
+            ticks.innerHTML = '';
+            for (let i = 0; i <= 15; i++) {
+                const span = document.createElement('span');
+                span.className = 'flex flex-col items-center';
+                span.innerHTML = `<span class="w-px h-2 bg-amber-950"></span><span>${i}</span>`;
+                ticks.appendChild(span);
+            }
+            ruler.dataset.angle = '0';
+            ruler.style.transform = 'rotate(0deg)';
+            ruler.classList.remove('hidden');
+        }
+
+        function rotateRulerWidget(deltaDeg) {
+            const ruler = document.getElementById('math-ruler-widget');
+            const cur = (parseFloat(ruler.dataset.angle || '0') + deltaDeg) % 360;
+            ruler.dataset.angle = String(cur);
+            ruler.style.transform = `rotate(${cur}deg)`;
+        }
+
+        (function setupRulerDrag() {
+            const ruler = document.getElementById('math-ruler-widget');
+            let dragging = false, offset = { x: 0, y: 0 };
+            ruler.addEventListener('mousedown', (e) => {
+                if (e.target.tagName === 'BUTTON') return;
+                dragging = true;
+                offset = { x: e.clientX - ruler.offsetLeft, y: e.clientY - ruler.offsetTop };
+            });
+            window.addEventListener('mousemove', (e) => {
+                if (!dragging) return;
+                ruler.style.left = `${e.clientX - offset.x}px`;
+                ruler.style.top = `${e.clientY - offset.y}px`;
+            });
+            window.addEventListener('mouseup', () => { dragging = false; });
+        })();
+
+        function toggleScreenShade(show) {
+            const shade = document.getElementById('screen-shade');
+            if (show) {
+                shade.style.height = '50%';
+                shade.classList.remove('hidden');
+            } else {
+                shade.classList.add('hidden');
+            }
+        }
+
+        (function setupShadeResize() {
+            const shade = document.getElementById('screen-shade');
+            const handle = document.getElementById('shade-handle');
+            let resizing = false;
+            handle.addEventListener('mousedown', () => { resizing = true; });
+            window.addEventListener('mousemove', (e) => {
+                if (!resizing) return;
+                const rect = viewport.getBoundingClientRect();
+                const h = Math.max(70, Math.min(rect.height - 40, e.clientY - rect.top));
+                shade.style.height = `${h}px`;
+            });
+            window.addEventListener('mouseup', () => { resizing = false; });
+        })();
+
+        function toggleSpotlight() {
+            spotlightEnabled = !spotlightEnabled;
+            showToast(spotlightEnabled ? 'ពិលបញ្ចាំង៖ បើក (ផ្លាស់ទី Mouse លើក្ដា)' : 'ពិលបញ្ចាំង៖ បិទ');
+        }
+
+        function pickRandomStudent() {
+            const names = ['សុខា', 'ដារ៉ា', 'បុប្ផា', 'វិសាល', 'ចន្ទា', 'រតនា', 'សុភ័ក្រ', 'ម៉ាលីស', 'ពិសិដ្ឋ', 'កញ្ញា'];
+            const chosen = names[Math.floor(Math.random() * names.length)];
+            closeModal('classroom-tools-modal');
+            showToast(`🎯 សិស្សដែលត្រូវបានជ្រើសរើស៖ ${chosen}`);
+            speakText(`សូមអញ្ជើញប្អូន ${chosen}`);
+        }
+
+        function normalizeKhmerDigits(str) {
+            const kh = '០១២៣៤៥៦៧៨៩';
+            return str.replace(/[០-៩]/g, d => String(kh.indexOf(d)));
+        }
+
+        function decimalToFraction(val) {
+            if (Number.isInteger(val)) return String(val);
+            const tolerance = 1.0E-6;
+            let h1 = 1, h2 = 0, k1 = 0, k2 = 1;
+            let b = val;
+            do {
+                const a = Math.floor(b);
+                let aux = h1; h1 = a * h1 + h2; h2 = aux;
+                aux = k1; k1 = a * k1 + k2; k2 = aux;
+                b = 1 / (b - a);
+            } while (Math.abs(val - h1 / k1) > Math.abs(val) * tolerance && k1 <= 1000);
+            return k1 === 1 ? String(h1) : `${h1}/${k1}`;
+        }
+
+        function evaluateSmartCalc() {
+            const raw = document.getElementById('smart-calc-input').value.trim();
+            if (!raw) return;
+            const norm = normalizeKhmerDigits(raw).replace(/×/g, '*').replace(/÷/g, '/');
+            try {
+                const val = Function(`"use strict"; return (${norm});`)();
+                if (typeof val === 'number' && isFinite(val)) {
+                    const rounded = Math.round(val * 100000) / 100000;
+                    const frac = decimalToFraction(rounded);
+                    lastCalcOutput = { decimal: String(rounded), fraction: frac };
+                    document.getElementById('smart-calc-result').innerText = frac !== String(rounded)
+                        ? `ចម្លើយ៖ ${rounded}  |  ប្រភាគ៖ ${frac}`
+                        : `ចម្លើយ៖ ${rounded}`;
+                } else {
+                    document.getElementById('smart-calc-result').innerText = 'មិនអាចគណនាបាន';
+                }
+            } catch (e) {
+                document.getElementById('smart-calc-result').innerText = 'ទម្រង់លេខមិនត្រឹមត្រូវ';
+            }
+        }
+
+        function insertCalcResultToBoard(asFraction) {
+            const text = asFraction ? lastCalcOutput.fraction : lastCalcOutput.decimal;
+            if (!text) return;
+            closeModal('classroom-tools-modal');
+            ctx.save();
+            ctx.fillStyle = currentColor;
+            ctx.font = "bold 34px 'Kantumruy Pro', 'Inter', sans-serif";
+            ctx.fillText(`= ${text}`, canvas.width / 2 - 60, canvas.height / 2);
+            ctx.restore();
+            saveHistoryState();
+        }
+
+        function speakText(text) {
+            if (!('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'km-KH';
+            utter.rate = 0.95;
+            window.speechSynthesis.speak(utter);
+        }
+
+        function readBoardAloud() {
+            const summary = lastAIDetectedEquation?.displayAnswer
+                ? `លទ្ធផលគណនាចុងក្រោយគឺ ${lastAIDetectedEquation.displayAnswer}`
+                : `រាងធរណីមាត្រចុងក្រោយនៅលើក្ដាខៀនគឺ ${lastDetectedShape.labelKh}`;
+            showToast(`🔊 កំពុងអាន៖ ${summary}`);
+            speakText(summary);
+        }
+
+        // =====================================================================
+        // 11. MULTI-PAGE SLIDES, UNDO / REDO & OVERLAY ANIMATION LOOP
+        // =====================================================================
+        function saveHistoryState() {
+            const slide = slides[currentSlideIdx];
+            slide.history = slide.history.slice(0, slide.step + 1);
+            slide.history.push(canvas.toDataURL());
+            if (slide.history.length > 25) slide.history.shift();
+            slide.step = slide.history.length - 1;
+            slide.objects = [...drawnObjects];
+        }
+
+        function restoreSlideCanvas(slide) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (slide.step >= 0 && slide.history[slide.step]) {
+                const img = new Image();
+                img.onload = () => ctx.drawImage(img, 0, 0);
+                img.src = slide.history[slide.step];
+            }
+            drawnObjects = [...(slide.objects || [])];
+        }
+
+        function restorePreviousStepForShape() {
+            const slide = slides[currentSlideIdx];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (slide.step >= 0 && slide.history[slide.step]) {
+                const img = new Image();
+                img.onload = () => ctx.drawImage(img, 0, 0);
+                img.src = slide.history[slide.step];
+            }
+        }
+
+        function undo() {
+            const slide = slides[currentSlideIdx];
+            if (slide.step > 0) {
+                slide.step--;
+                restoreSlideCanvas(slide);
+            } else if (slide.step === 0) {
+                slide.step = -1;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawnObjects = [];
+            }
+        }
+
+        function redo() {
+            const slide = slides[currentSlideIdx];
+            if (slide.step < slide.history.length - 1) {
+                slide.step++;
+                restoreSlideCanvas(slide);
+            }
+        }
+
+        function updateSlideUI() {
+            document.getElementById('slide-indicator').innerText = `ទំព័រ ${currentSlideIdx + 1} / ${slides.length}`;
+        }
+
+        function addNewSlide() {
+            slides.push({ history: [], step: -1, objects: [] });
+            currentSlideIdx = slides.length - 1;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawnObjects = [];
+            saveHistoryState();
+            updateSlideUI();
+            showToast(`បានបង្កើតទំព័រមេរៀនទី ${slides.length}`);
+        }
+
+        function prevSlide() {
+            if (currentSlideIdx > 0) {
+                currentSlideIdx--;
+                restoreSlideCanvas(slides[currentSlideIdx]);
+                updateSlideUI();
+            }
+        }
+
+        function nextSlide() {
+            if (currentSlideIdx < slides.length - 1) {
+                currentSlideIdx++;
+                restoreSlideCanvas(slides[currentSlideIdx]);
+                updateSlideUI();
+            }
+        }
+
+        function confirmClearBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            drawnObjects = [];
+            recentMathStrokes = [];
+            selectionBox = null;
+            saveHistoryState();
+            showToast('បានសម្អាតទំព័រក្ដាខៀនរួចរាល់');
+        }
+
+        function renderLaserAndSpotlightLoop() {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            // Spotlight effect
+            if (spotlightEnabled) {
+                overlayCtx.save();
+                overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+                overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                overlayCtx.globalCompositeOperation = 'destination-out';
+                const grad = overlayCtx.createRadialGradient(spotlightPos.x, spotlightPos.y, 40, spotlightPos.x, spotlightPos.y, 140);
+                grad.addColorStop(0, 'rgba(0,0,0,1)');
+                grad.addColorStop(1, 'rgba(0,0,0,0)');
+                overlayCtx.fillStyle = grad;
+                overlayCtx.beginPath();
+                overlayCtx.arc(spotlightPos.x, spotlightPos.y, 140, 0, Math.PI * 2);
+                overlayCtx.fill();
+                overlayCtx.restore();
+            }
+
+            // Laser pointer trail
+            const now = Date.now();
+            laserTrail = laserTrail.filter(p => now - p.time < 650);
+            if (laserTrail.length > 1) {
+                overlayCtx.save();
+                for (let i = 1; i < laserTrail.length; i++) {
+                    const alpha = 1 - (now - laserTrail[i].time) / 650;
+                    overlayCtx.strokeStyle = `rgba(244, 63, 94, ${alpha})`;
+                    overlayCtx.lineWidth = 6 * alpha;
+                    overlayCtx.lineCap = 'round';
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(laserTrail[i - 1].x, laserTrail[i - 1].y);
+                    overlayCtx.lineTo(laserTrail[i].x, laserTrail[i].y);
+                    overlayCtx.stroke();
+                }
+                const tip = laserTrail[laserTrail.length - 1];
+                overlayCtx.fillStyle = '#ffffff';
+                overlayCtx.beginPath();
+                overlayCtx.arc(tip.x, tip.y, 4, 0, Math.PI * 2);
+                overlayCtx.fill();
+                overlayCtx.restore();
+            }
+
+            requestAnimationFrame(renderLaserAndSpotlightLoop);
+        }
+
+        // =====================================================================
+        // 12. MODALS & TOAST HELPERS
+        // =====================================================================
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+            if (id === 'api-key-modal') {
+                updateApiKeyIndicator();
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        let toastTimer = null;
+        function showToast(msg) {
+            const box = document.getElementById('toast-box');
+            box.innerText = msg;
+            box.classList.remove('hidden');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => box.classList.add('hidden'), 3200);
+        }
+
+        // Initialize on Window Load
+        window.addEventListener('resize', resizeCanvases);
+        window.onload = function () {
+            lucide.createIcons();
+            resizeCanvases();
+            saveHistoryState();
+            renderLaserAndSpotlightLoop();
+            updateApiKeyIndicator();
+        };
+    </script>
+</body>
+</html>
