@@ -338,11 +338,15 @@
             <div class="space-y-1.5">
                 <label class="block text-xs font-semibold text-slate-200">ជ្រើសរើស Model Gemini៖</label>
                 <select id="gemini-model-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
-                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (លឿន & ឆ្លាតវៃ - ណែនាំចម្បង)</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (ស្ថិរភាព Free Tier)</option>
+                    <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (ណែនាំចម្បង - Free Tier ស្ថិរភាព & ពេញនិយមបំផុត)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (លឿន & ឆ្លាតវៃ)</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (ជំនាន់ចុងក្រោយ)</option>
                     <option value="gemini-1.5-pro">Gemini 1.5 Pro (សម្រាប់កិច្ចការគណនាស្មុគស្មាញ)</option>
                 </select>
             </div>
+
+            <!-- Test Feedback Box -->
+            <div id="api-key-test-feedback" class="hidden text-xs px-3.5 py-2.5 rounded-xl border font-medium"></div>
 
             <!-- How to get free API key guide -->
             <div class="p-3 bg-slate-800/70 border border-slate-700 rounded-2xl text-xs space-y-1.5">
@@ -649,14 +653,26 @@
         }
 
         // =====================================================================
-        // API KEY MANAGEMENT (LOCAL STORAGE & SETTINGS)
+        // API KEY MANAGEMENT (LOCAL STORAGE & MULTI-MODEL FALLBACK ENGINE)
         // =====================================================================
+        const CANDIDATE_MODELS = [
+            'gemini-1.5-flash',
+            'gemini-2.0-flash',
+            'gemini-2.5-flash',
+            'gemini-1.5-pro'
+        ];
+
+        function cleanApiKey(key) {
+            if (!key) return '';
+            return String(key).trim().replace(/[\r\n\t]/g, '').replace(/^["'`]|["'`]$/g, '');
+        }
+
         function getStoredApiKey() {
-            return (localStorage.getItem('gemini_api_key') || '').trim();
+            return cleanApiKey(localStorage.getItem('gemini_api_key') || '');
         }
 
         function getStoredModel() {
-            return (localStorage.getItem('gemini_model') || 'gemini-2.0-flash').trim();
+            return (localStorage.getItem('gemini_model') || 'gemini-1.5-flash').trim();
         }
 
         function updateApiKeyIndicator() {
@@ -687,8 +703,8 @@
         function saveApiKeySettings() {
             const input = document.getElementById('gemini-api-key-input');
             const select = document.getElementById('gemini-model-select');
-            const key = (input ? input.value : '').trim();
-            const model = (select ? select.value : 'gemini-2.0-flash');
+            const key = cleanApiKey(input ? input.value : '');
+            const model = (select ? select.value : 'gemini-1.5-flash');
 
             if (!key) {
                 showToast('សូមបញ្ចូល Gemini API Key មុននឹងចុចរក្សាទុក');
@@ -705,7 +721,9 @@
         function clearSavedApiKey() {
             localStorage.removeItem('gemini_api_key');
             const input = document.getElementById('gemini-api-key-input');
+            const feedback = document.getElementById('api-key-test-feedback');
             if (input) input.value = '';
+            if (feedback) feedback.classList.add('hidden');
             updateApiKeyIndicator();
             showToast('បានលុប API Key រួចរាល់');
         }
@@ -727,39 +745,81 @@
         async function testApiKey() {
             const input = document.getElementById('gemini-api-key-input');
             const select = document.getElementById('gemini-model-select');
-            const key = (input ? input.value : '').trim();
-            const model = select ? select.value : 'gemini-2.0-flash';
+            const feedback = document.getElementById('api-key-test-feedback');
+            const key = cleanApiKey(input ? input.value : '');
+            let selectedModel = select ? select.value : 'gemini-1.5-flash';
 
             if (!key) {
                 showToast('សូមបញ្ចូល API Key ដើម្បីធ្វើតេស្ត');
+                if (feedback) {
+                    feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-rose-500/15 border-rose-500/40 text-rose-300 block';
+                    feedback.innerText = '❌ សូមបញ្ចូល API Key មុននឹងចុចសាកល្បង!';
+                }
                 return;
             }
 
             const btn = document.getElementById('btn-test-key');
             if (btn) btn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> កំពុងតេស្ត...';
+            if (feedback) {
+                feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-sky-500/15 border-sky-500/40 text-sky-300 block';
+                feedback.innerText = `⏳ កំពុងតេស្តភ្ជាប់ទៅកាន់ Google Gemini (${selectedModel})...`;
+            }
 
-            try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }]
-                    })
-                });
+            const modelsToTry = [selectedModel, ...CANDIDATE_MODELS.filter(m => m !== selectedModel)];
+            let workingModel = null;
+            let lastErrorMsg = '';
 
-                if (res.ok) {
-                    showToast('🎉 API Key ដំណើរការបានយ៉ាងល្អឥតខ្ចោះ!');
-                } else {
-                    const err = await res.json().catch(() => ({}));
-                    const msg = err?.error?.message || 'API Key មិនត្រឹមត្រូវ ឬគ្មានសិទ្ធិប្រើប្រាស់';
-                    showToast(`❌ កំហុស៖ ${msg}`);
+            for (const m of modelsToTry) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`;
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }]
+                        })
+                    });
+
+                    if (res.ok) {
+                        workingModel = m;
+                        break;
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        lastErrorMsg = err?.error?.message || `HTTP ${res.status}`;
+                        if (res.status === 400 && (lastErrorMsg.toLowerCase().includes('api_key_invalid') || lastErrorMsg.toLowerCase().includes('api key not valid'))) {
+                            break;
+                        }
+                    }
+                } catch (e) {
+                    lastErrorMsg = e.message || 'Network error';
                 }
-            } catch (err) {
-                showToast('❌ មិនអាចភ្ជាប់ទៅកាន់ Google API បានទេ សូមពិនិត្យមើលអ៊ីនធឺណិត');
-            } finally {
-                if (btn) btn.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5"></i> សាកល្បង Key';
-                lucide.createIcons();
+            }
+
+            if (btn) btn.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5"></i> សាកល្បង Key';
+            lucide.createIcons();
+
+            if (workingModel) {
+                if (select) select.value = workingModel;
+                localStorage.setItem('gemini_api_key', key);
+                localStorage.setItem('gemini_model', workingModel);
+                updateApiKeyIndicator();
+                if (feedback) {
+                    feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-emerald-500/15 border-emerald-500/40 text-emerald-300 block';
+                    feedback.innerText = `🎉 ជោគជ័យ! API Key ត្រឹមត្រូវ និងដំណើរការយ៉ាងល្អជាមួយ ${workingModel}។`;
+                }
+                showToast(`🎉 API Key ដំណើរការបានយ៉ាងល្អ (${workingModel})!`);
+            } else {
+                let friendlyMsg = lastErrorMsg;
+                if (lastErrorMsg.toLowerCase().includes('api key not valid') || lastErrorMsg.toLowerCase().includes('api_key_invalid')) {
+                    friendlyMsg = 'API Key មិនត្រឹមត្រូវ សូមពិនិត្យមើល និងចម្លង Key ពី Google AI Studio ឡើងវិញ';
+                } else if (lastErrorMsg.toLowerCase().includes('quota') || lastErrorMsg.includes('429')) {
+                    friendlyMsg = 'កូតា Free របស់គណនីបានពេញមួយភ្លែត សូមរង់ចាំប្រហែល ៣០ វិនាទី';
+                }
+                if (feedback) {
+                    feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-rose-500/15 border-rose-500/40 text-rose-300 block';
+                    feedback.innerText = `❌ កំហុស API៖ ${friendlyMsg}`;
+                }
+                showToast(`❌ កំហុស API៖ ${friendlyMsg}`);
             }
         }
 
@@ -2141,6 +2201,45 @@
             }
         }
 
+        function getDrawnItemsBounds() {
+            const slide = slides[currentSlideIdx];
+            if (!slide || !slide.items || slide.items.length === 0) return null;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const item of slide.items) {
+                const b = item.bounds;
+                if (b) {
+                    minX = Math.min(minX, b.x);
+                    minY = Math.min(minY, b.y);
+                    maxX = Math.max(maxX, b.x + b.w);
+                    maxY = Math.max(maxY, b.y + b.h);
+                }
+            }
+            if (!isFinite(minX) || maxX <= minX || maxY <= minY) return null;
+            return {
+                x: Math.max(0, minX - 25),
+                y: Math.max(0, minY - 25),
+                w: maxX - minX + 50,
+                h: maxY - minY + 50,
+                eqRightX: maxX + 10,
+                eqCenterY: (minY + maxY) / 2,
+                digitHeight: Math.min(60, Math.max(24, (maxY - minY) / 2))
+            };
+        }
+
+        function extractJsonFromText(rawText) {
+            if (!rawText) return null;
+            try { return JSON.parse(rawText); } catch (e) {}
+            const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (codeBlockMatch) {
+                try { return JSON.parse(codeBlockMatch[1]); } catch (e) {}
+            }
+            const braceMatch = rawText.match(/\{[\s\S]*\}/);
+            if (braceMatch) {
+                try { return JSON.parse(braceMatch[0]); } catch (e) {}
+            }
+            return null;
+        }
+
         function computeRecentMathRegion() {
             if (recentMathStrokes.length === 0) return null;
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2180,30 +2279,38 @@
                 return;
             }
 
-            const region = customRegion || computeRecentMathRegion() || {
-                x: 0,
-                y: 0,
-                w: viewport.clientWidth,
-                h: viewport.clientHeight,
-                eqRightX: viewport.clientWidth * 0.55,
-                eqCenterY: viewport.clientHeight * 0.45,
-                digitHeight: 36
-            };
+            const region = customRegion || computeRecentMathRegion() || getDrawnItemsBounds();
+            if (!region || region.w < 10 || region.h < 10) {
+                showToast('ℹ️ សូមសរសេរលេខ ឬរូបមន្តនៅលើក្ដាជាមុនសិន');
+                return;
+            }
 
             isAIProcessingMath = true;
             const pill = document.getElementById('ai-math-status-pill');
             if (pill) pill.innerText = 'AI គណនា (=): កំពុងវិភាគ...';
 
             try {
-                // High-resolution snapshot directly rendered from vector items for Gemini Vision
+                // Render lightweight and sharp snapshot for Gemini Vision (max 700x700)
+                const maxDim = 700;
+                const origW = Math.max(60, region.w);
+                const origH = Math.max(60, region.h);
+                let snapW = Math.round(origW);
+                let snapH = Math.round(origH);
+                if (snapW > maxDim || snapH > maxDim) {
+                    const scale = maxDim / Math.max(snapW, snapH);
+                    snapW = Math.round(snapW * scale);
+                    snapH = Math.round(snapH * scale);
+                }
+
                 const snap = document.createElement('canvas');
-                snap.width = Math.max(80, Math.round(region.w));
-                snap.height = Math.max(80, Math.round(region.h));
+                snap.width = snapW;
+                snap.height = snapH;
                 const sCtx = snap.getContext('2d');
                 sCtx.fillStyle = themes[themeIndex].bg;
                 sCtx.fillRect(0, 0, snap.width, snap.height);
 
                 sCtx.save();
+                sCtx.scale(snapW / origW, snapH / origH);
                 sCtx.translate(-region.x, -region.y);
                 const slide = slides[currentSlideIdx];
                 if (slide && slide.items) {
@@ -2213,7 +2320,7 @@
                 }
                 sCtx.restore();
 
-                const base64Data = snap.toDataURL('image/png').split(',')[1];
+                const base64Data = snap.toDataURL('image/jpeg', 0.85).split(',')[1];
                 const prompt = `You are a math OCR, algebraic equation solver, and function graph analyzer for a smart whiteboard.
 Look at the handwritten math expression, equation, or function in this image (e.g., "3y + 5 = 5", "2x - 4 = 0", "y = 2x + 1", "y = x^2 - 2", or arithmetic like "1/2 + 1/4 =").
 1. Read the expression/equation accurately (converting Khmer digits ០១២៣៤៥៦៧៨៩ to 0-9).
@@ -2223,52 +2330,65 @@ Look at the handwritten math expression, equation, or function in this image (e.
 5. Return ONLY valid JSON with this exact structure:
 {"expression": "detected expression", "answer": "exact solution or value", "fraction": "simplified fraction if applicable else empty string", "displayAnswer": "best formatted solution (e.g. 'y = 0' or '3/4' or '42')", "isEquationOrFunction": true/false, "plottableFn": "RHS in terms of x if plottable on Oxy else empty string", "suggested3D": "cylinder|cone|sphere|cube|revolve|extrude"}`;
 
-                const model = getStoredModel();
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                const initialModel = getStoredModel();
+                const modelsToTry = [initialModel, ...CANDIDATE_MODELS.filter(m => m !== initialModel)];
+                let responseData = null;
+                let lastError = null;
+
                 const payload = {
                     contents: [{
                         role: 'user',
                         parts: [
                             { text: prompt },
-                            { inlineData: { mimeType: 'image/png', data: base64Data } }
+                            { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
                         ]
                     }],
                     generationConfig: { responseMimeType: 'application/json' }
                 };
 
-                let responseData = null;
-                let delay = 1000;
-                let lastError = null;
-
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    const res = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (res.ok) {
-                        responseData = await res.json();
-                        break;
-                    } else {
-                        const err = await res.json().catch(() => ({}));
-                        lastError = err?.error?.message || `Status ${res.status}`;
-                        if (res.status === 400 || res.status === 403) break;
-                    }
-                    if (attempt < 2) {
-                        await new Promise(r => setTimeout(r, delay));
-                        delay *= 2;
+                for (const m of modelsToTry) {
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+                    try {
+                        const res = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (res.ok) {
+                            responseData = await res.json();
+                            if (m !== initialModel) {
+                                localStorage.setItem('gemini_model', m);
+                                const modelSelect = document.getElementById('gemini-model-select');
+                                if (modelSelect) modelSelect.value = m;
+                            }
+                            break;
+                        } else {
+                            const err = await res.json().catch(() => ({}));
+                            lastError = err?.error?.message || `HTTP ${res.status}`;
+                            if (res.status === 400 && (lastError.toLowerCase().includes('api_key_invalid') || lastError.toLowerCase().includes('api key not valid'))) {
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        lastError = e.message;
                     }
                 }
 
                 if (!responseData) {
+                    let friendlyMsg = lastError || 'សូមពិនិត្យមើល API Key';
+                    if (friendlyMsg.toLowerCase().includes('api key not valid') || friendlyMsg.toLowerCase().includes('api_key_invalid')) {
+                        friendlyMsg = 'API Key មិនត្រឹមត្រូវ សូមពិនិត្យមើល និងចម្លង Key ពី Google AI Studio ឡើងវិញ';
+                    } else if (friendlyMsg.toLowerCase().includes('quota') || friendlyMsg.includes('429')) {
+                        friendlyMsg = 'កូតា Free បានពេញមួយភ្លែត សូមរង់ចាំ ៣០ វិនាទី រួចចុចម្ដងទៀត';
+                    }
                     if (pill) pill.innerText = 'AI គណនា (=): កំហុស API';
-                    showToast(`❌ កំហុស API៖ ${lastError || 'សូមពិនិត្យមើល API Key'}`);
+                    showToast(`❌ កំហុស API៖ ${friendlyMsg}`);
                     openModal('api-key-modal');
                     return;
                 }
 
-                const rawText = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                const parsed = JSON.parse(rawText);
+                const rawText = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                const parsed = extractJsonFromText(rawText);
 
                 if (parsed && parsed.answer && parsed.answer !== 'unknown') {
                     const finalOutput = parsed.displayAnswer || (parsed.fraction ? `${parsed.fraction} (${parsed.answer})` : String(parsed.answer));
