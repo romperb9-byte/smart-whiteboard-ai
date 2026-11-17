@@ -653,14 +653,16 @@
         }
 
         // =====================================================================
-        // API KEY MANAGEMENT (LOCAL STORAGE & MULTI-MODEL FALLBACK ENGINE)
+        // API KEY MANAGEMENT & DYNAMIC MODEL DISCOVERY (LISTMODELS ENGINE)
         // =====================================================================
-        const CANDIDATE_MODELS = [
+        const DEFAULT_MODELS = [
             'gemini-1.5-flash',
             'gemini-2.0-flash',
             'gemini-2.5-flash',
-            'gemini-1.5-pro'
+            'gemini-1.5-flash-8b'
         ];
+
+        let cachedAvailableModels = null;
 
         function cleanApiKey(key) {
             if (!key) return '';
@@ -675,6 +677,57 @@
             return (localStorage.getItem('gemini_model') || 'gemini-1.5-flash').trim();
         }
 
+        // Query Google API ModelService.ListModels to get exact verified models for this key
+        async function fetchAvailableModels(apiKey) {
+            const key = cleanApiKey(apiKey);
+            if (!key) return null;
+
+            for (const ver of ['v1beta', 'v1']) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/${ver}/models?key=${key}`;
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.models && data.models.length > 0) {
+                            const validModels = data.models
+                                .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+                                .map(m => ({
+                                    id: m.name.replace(/^models\//, ''),
+                                    rawName: m.name,
+                                    displayName: m.displayName || m.name.replace(/^models\//, ''),
+                                    version: ver
+                                }));
+                            if (validModels.length > 0) {
+                                cachedAvailableModels = { apiVersion: ver, models: validModels };
+                                return cachedAvailableModels;
+                            }
+                        }
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        const msg = err?.error?.message || '';
+                        if (res.status === 400 && (msg.toLowerCase().includes('api_key_invalid') || msg.toLowerCase().includes('api key not valid'))) {
+                            return { error: 'API_KEY_INVALID', message: 'API Key មិនត្រឹមត្រូវ សូមពិនិត្យមើល និងចម្លង Key ពី Google AI Studio ឡើងវិញ' };
+                        }
+                    }
+                } catch (e) {}
+            }
+            return null;
+        }
+
+        function populateModelSelect(models, currentSelected) {
+            const select = document.getElementById('gemini-model-select');
+            if (!select || !models || models.length === 0) return;
+
+            select.innerHTML = '';
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.innerText = m.displayName || m.id;
+                if (m.id === currentSelected) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
         function updateApiKeyIndicator() {
             const key = getStoredApiKey();
             const dot = document.getElementById('api-key-dot');
@@ -683,7 +736,9 @@
             const select = document.getElementById('gemini-model-select');
 
             if (input) input.value = key;
-            if (select) select.value = getStoredModel();
+            if (select && select.value !== getStoredModel()) {
+                select.value = getStoredModel();
+            }
 
             if (key) {
                 if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
@@ -720,6 +775,7 @@
 
         function clearSavedApiKey() {
             localStorage.removeItem('gemini_api_key');
+            cachedAvailableModels = null;
             const input = document.getElementById('gemini-api-key-input');
             const feedback = document.getElementById('api-key-test-feedback');
             if (input) input.value = '';
@@ -747,7 +803,6 @@
             const select = document.getElementById('gemini-model-select');
             const feedback = document.getElementById('api-key-test-feedback');
             const key = cleanApiKey(input ? input.value : '');
-            let selectedModel = select ? select.value : 'gemini-1.5-flash';
 
             if (!key) {
                 showToast('សូមបញ្ចូល API Key ដើម្បីធ្វើតេស្ត');
@@ -762,64 +817,76 @@
             if (btn) btn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> កំពុងតេស្ត...';
             if (feedback) {
                 feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-sky-500/15 border-sky-500/40 text-sky-300 block';
-                feedback.innerText = `⏳ កំពុងតេស្តភ្ជាប់ទៅកាន់ Google Gemini (${selectedModel})...`;
+                feedback.innerText = `⏳ កំពុងពិនិត្យបញ្ជី Model ដែលគាំទ្រពី Google API...`;
             }
 
-            const modelsToTry = [selectedModel, ...CANDIDATE_MODELS.filter(m => m !== selectedModel)];
-            let workingModel = null;
-            let lastErrorMsg = '';
-
-            for (const m of modelsToTry) {
-                try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`;
-                    const res = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }]
-                        })
-                    });
-
-                    if (res.ok) {
-                        workingModel = m;
-                        break;
-                    } else {
-                        const err = await res.json().catch(() => ({}));
-                        lastErrorMsg = err?.error?.message || `HTTP ${res.status}`;
-                        if (res.status === 400 && (lastErrorMsg.toLowerCase().includes('api_key_invalid') || lastErrorMsg.toLowerCase().includes('api key not valid'))) {
-                            break;
-                        }
-                    }
-                } catch (e) {
-                    lastErrorMsg = e.message || 'Network error';
+            // Step 1: Discover available models from Google API
+            const modelDiscovery = await fetchAvailableModels(key);
+            if (!modelDiscovery || modelDiscovery.error) {
+                if (btn) btn.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5"></i> សាកល្បង Key';
+                lucide.createIcons();
+                const errMsg = modelDiscovery?.message || 'API Key មិនត្រឹមត្រូវ ឬគ្មានសិទ្ធិប្រើប្រាស់';
+                if (feedback) {
+                    feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-rose-500/15 border-rose-500/40 text-rose-300 block';
+                    feedback.innerText = `❌ កំហុស API៖ ${errMsg}`;
                 }
+                showToast(`❌ កំហុស API៖ ${errMsg}`);
+                return;
+            }
+
+            const validList = modelDiscovery.models;
+            const apiVersion = modelDiscovery.apiVersion || 'v1beta';
+
+            // Pick the best model (prefer gemini-1.5-flash or gemini-2.0-flash)
+            const availableIds = validList.map(m => m.id);
+            const preference = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-exp', 'gemini-2.5-flash'];
+            let bestModel = preference.find(p => availableIds.includes(p)) || availableIds.find(id => id.includes('flash')) || availableIds[0];
+
+            populateModelSelect(validList, bestModel);
+
+            // Step 2: Test generateContent on the selected model
+            let isWorking = false;
+            let lastErrMsg = '';
+
+            try {
+                const testUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${bestModel}:generateContent?key=${key}`;
+                const res = await fetch(testUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }]
+                    })
+                });
+
+                if (res.ok) {
+                    isWorking = true;
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    lastErrMsg = err?.error?.message || `HTTP ${res.status}`;
+                }
+            } catch (e) {
+                lastErrMsg = e.message || 'Network error';
             }
 
             if (btn) btn.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5"></i> សាកល្បង Key';
             lucide.createIcons();
 
-            if (workingModel) {
-                if (select) select.value = workingModel;
+            if (isWorking) {
                 localStorage.setItem('gemini_api_key', key);
-                localStorage.setItem('gemini_model', workingModel);
+                localStorage.setItem('gemini_model', bestModel);
+                localStorage.setItem('gemini_api_version', apiVersion);
                 updateApiKeyIndicator();
                 if (feedback) {
                     feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-emerald-500/15 border-emerald-500/40 text-emerald-300 block';
-                    feedback.innerText = `🎉 ជោគជ័យ! API Key ត្រឹមត្រូវ និងដំណើរការយ៉ាងល្អជាមួយ ${workingModel}។`;
+                    feedback.innerText = `🎉 ជោគជ័យ! API Key ត្រឹមត្រូវ និងដំណើរការយ៉ាងល្អជាមួយ ${bestModel} (គាំទ្រ ${validList.length} models)។`;
                 }
-                showToast(`🎉 API Key ដំណើរការបានយ៉ាងល្អ (${workingModel})!`);
+                showToast(`🎉 API Key ដំណើរការបានយ៉ាងល្អ (${bestModel})!`);
             } else {
-                let friendlyMsg = lastErrorMsg;
-                if (lastErrorMsg.toLowerCase().includes('api key not valid') || lastErrorMsg.toLowerCase().includes('api_key_invalid')) {
-                    friendlyMsg = 'API Key មិនត្រឹមត្រូវ សូមពិនិត្យមើល និងចម្លង Key ពី Google AI Studio ឡើងវិញ';
-                } else if (lastErrorMsg.toLowerCase().includes('quota') || lastErrorMsg.includes('429')) {
-                    friendlyMsg = 'កូតា Free របស់គណនីបានពេញមួយភ្លែត សូមរង់ចាំប្រហែល ៣០ វិនាទី';
-                }
                 if (feedback) {
                     feedback.className = 'text-xs px-3.5 py-2.5 rounded-xl border font-medium bg-rose-500/15 border-rose-500/40 text-rose-300 block';
-                    feedback.innerText = `❌ កំហុស API៖ ${friendlyMsg}`;
+                    feedback.innerText = `❌ កំហុស API៖ ${lastErrMsg}`;
                 }
-                showToast(`❌ កំហុស API៖ ${friendlyMsg}`);
+                showToast(`❌ កំហុស API៖ ${lastErrMsg}`);
             }
         }
 
@@ -2330,12 +2397,33 @@ Look at the handwritten math expression, equation, or function in this image (e.
 5. Return ONLY valid JSON with this exact structure:
 {"expression": "detected expression", "answer": "exact solution or value", "fraction": "simplified fraction if applicable else empty string", "displayAnswer": "best formatted solution (e.g. 'y = 0' or '3/4' or '42')", "isEquationOrFunction": true/false, "plottableFn": "RHS in terms of x if plottable on Oxy else empty string", "suggested3D": "cylinder|cone|sphere|cube|revolve|extrude"}`;
 
-                const initialModel = getStoredModel();
-                const modelsToTry = [initialModel, ...CANDIDATE_MODELS.filter(m => m !== initialModel)];
-                let responseData = null;
-                let lastError = null;
+                let activeVersion = localStorage.getItem('gemini_api_version') || 'v1beta';
+                let modelsToTry = [getStoredModel()];
 
-                const payload = {
+                // Fetch real supported models from Google API
+                if (!cachedAvailableModels) {
+                    await fetchAvailableModels(apiKey);
+                }
+
+                if (cachedAvailableModels && cachedAvailableModels.models && cachedAvailableModels.models.length > 0) {
+                    activeVersion = cachedAvailableModels.apiVersion || 'v1beta';
+                    const availableIds = cachedAvailableModels.models.map(m => m.id);
+                    const current = getStoredModel();
+                    const ordered = [
+                        current,
+                        'gemini-1.5-flash',
+                        'gemini-2.0-flash',
+                        'gemini-1.5-flash-8b',
+                        'gemini-2.0-flash-exp',
+                        'gemini-2.5-flash',
+                        ...availableIds
+                    ];
+                    modelsToTry = [...new Set(ordered.filter(id => availableIds.includes(id)))];
+                } else {
+                    modelsToTry = [...new Set([getStoredModel(), ...DEFAULT_MODELS])];
+                }
+
+                const payloadWithJson = {
                     contents: [{
                         role: 'user',
                         parts: [
@@ -2346,21 +2434,40 @@ Look at the handwritten math expression, equation, or function in this image (e.
                     generationConfig: { responseMimeType: 'application/json' }
                 };
 
+                const payloadPlain = {
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { text: prompt },
+                            { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
+                        ]
+                    }]
+                };
+
                 for (const m of modelsToTry) {
-                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+                    const apiUrl = `https://generativelanguage.googleapis.com/${activeVersion}/models/${m}:generateContent?key=${apiKey}`;
                     try {
-                        const res = await fetch(apiUrl, {
+                        let res = await fetch(apiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
+                            body: JSON.stringify(payloadWithJson)
                         });
+
+                        // Fallback without generationConfig if 400
+                        if (!res.ok && res.status === 400) {
+                            res = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payloadPlain)
+                            });
+                        }
+
                         if (res.ok) {
                             responseData = await res.json();
-                            if (m !== initialModel) {
-                                localStorage.setItem('gemini_model', m);
-                                const modelSelect = document.getElementById('gemini-model-select');
-                                if (modelSelect) modelSelect.value = m;
-                            }
+                            localStorage.setItem('gemini_model', m);
+                            localStorage.setItem('gemini_api_version', activeVersion);
+                            const modelSelect = document.getElementById('gemini-model-select');
+                            if (modelSelect && modelSelect.value !== m) modelSelect.value = m;
                             break;
                         } else {
                             const err = await res.json().catch(() => ({}));
