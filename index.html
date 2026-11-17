@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body {
             font-family: 'Kantumruy Pro', 'Inter', sans-serif;
@@ -66,8 +67,14 @@
                 <span>AI គណនា (=)</span>
             </button>
 
+            <!-- Engine Mode Selector Button: Auto Offline vs Gemini Cloud -->
+            <button id="btn-calc-engine-toggle" onclick="toggleCalcEngine()" title="ចុចដើម្បីប្តូររវាង ⚡ Auto ក្នុងម៉ាស៊ីន (Offline - មិនបាច់ API) និង 🤖 Google Gemini AI" class="px-2.5 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/45 border border-emerald-500/60 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 shrink-0 transition">
+                <i id="calc-engine-icon" data-lucide="zap" class="w-3.5 h-3.5 text-emerald-300"></i>
+                <span id="calc-engine-label">ម៉ាស៊ីន៖ Auto (Offline)</span>
+            </button>
+
             <!-- Solve Now Button -->
-            <button onclick="triggerHandwrittenMathSolve(null)" title="ស្កេនគណនាលេខលើក្ដាឥឡូវនេះ" class="px-2.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1 shrink-0 shadow transition">
+            <button onclick="triggerHandwrittenMathSolve(null)" title="ស្កេនគណនាលេខលើក្ដាឥឡូវនេះ" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shrink-0 shadow transition">
                 <i data-lucide="calculator" class="w-3.5 h-3.5"></i>
                 <span class="hidden sm:inline">គណនាឥឡូវ</span>
             </button>
@@ -184,6 +191,19 @@
                     <i data-lucide="box" class="w-3.5 h-3.5"></i> បង្ហាញ 3D
                 </button>
             </div>
+        </div>
+
+        <!-- Floating Quick Math Bar (For Instant Offline Calculations or Confirmation) -->
+        <div id="quick-math-bar" class="hidden fixed z-40 bg-slate-900/95 backdrop-blur-md border border-emerald-500/80 shadow-2xl rounded-2xl p-2.5 max-w-sm flex items-center gap-2 animate-fade-in text-white">
+            <div class="flex items-center gap-1.5 px-1.5 text-emerald-400 text-xs font-bold shrink-0">
+                <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i>
+                <span class="hidden sm:inline">Auto គណនា៖</span>
+            </div>
+            <input id="quick-math-input" type="text" placeholder="25 + 15 = ឬ 2x + 6 = 10" onkeydown="if(event.key==='Enter')executeQuickMathPrompt(); if(event.key==='Escape')hideQuickMathPrompt();" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-emerald-300 font-mono w-44 focus:outline-none focus:border-emerald-500">
+            <button onclick="executeQuickMathPrompt()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow transition shrink-0 flex items-center gap-1">
+                <span>គណនា</span>
+            </button>
+            <button onclick="hideQuickMathPrompt()" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 transition shrink-0" title="បិទ">✕</button>
         </div>
 
         <!-- Right-Click Context Menu for Selected Shape / Region -->
@@ -319,8 +339,19 @@
                 <button onclick="closeModal('api-key-modal')" class="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-300 transition">✕</button>
             </div>
             
+            <!-- Notice: Offline Auto calculation is available without API key -->
+            <div class="p-3 bg-emerald-950/70 border border-emerald-500/60 rounded-2xl text-xs space-y-1">
+                <div class="flex items-center gap-1.5 text-emerald-300 font-bold">
+                    <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i>
+                    <span>មិនចាំបាច់មាន API Key ក៏អាចគណនាបាន (Auto Offline)!</span>
+                </div>
+                <p class="text-slate-300 text-[11px] leading-relaxed">
+                    កម្មវិធីមានមុខងារ <b>"⚡ Auto គណនា (Offline)"</b> ដែលដំណើរការលើកុំព្យូទ័រ/ទូរស័ព្ទរបស់អ្នកផ្ទាល់ ដោយមិនចាំបាច់មាន API Key និងមិនបាច់អ៊ីនធឺណិតឡើយ។ លោកអ្នកត្រូវការ Gemini API Key តែពេលចង់បានការពន្យល់លម្អិត ឬដោះស្រាយលំហាត់ស្មុគស្មាញពី Cloud AI ប៉ុណ្ណោះ។
+                </p>
+            </div>
+
             <p class="text-xs text-slate-300 leading-relaxed">
-                មុខងារ AI ស្គាល់លេខដៃ និងគណនារូបមន្ត (=) ត្រូវការ API Key ពី Google Gemini (ទទួលបានដោយឥតគិតថ្លៃ 100% ពី Google AI Studio)។ Key របស់អ្នកត្រូវបានរក្សាទុកតែនៅក្នុង Browser (localStorage) របស់អ្នកដោយសុវត្ថិភាព មិនបញ្ជូនទៅ server ផ្សេងក្រៅពី Google API ឡើយ។
+                មុខងារ Cloud Gemini AI ស្គាល់លេខដៃ និងគណនារូបមន្ត (=) ត្រូវការ API Key ពី Google Gemini (ទទួលបានដោយឥតគិតថ្លៃ 100% ពី Google AI Studio)។ Key របស់អ្នកត្រូវបានរក្សាទុកតែនៅក្នុង Browser (localStorage) របស់អ្នកដោយសុវត្ថិភាព។
             </p>
 
             <!-- Input Field -->
@@ -646,6 +677,56 @@
         let recentMathStrokes = [];
         let lastAIDetectedEquation = null;
         let lastCalcOutput = { decimal: '', fraction: '' };
+        let quickMathActiveRegion = null;
+        let tesseractWorkerPromise = null;
+
+        // Calc Engine: 'auto' (Offline - no API needed) or 'gemini' (Google Cloud Gemini API)
+        let currentCalcEngine = localStorage.getItem('math_calc_engine') || 'auto';
+
+        function toggleCalcEngine() {
+            if (currentCalcEngine === 'auto') {
+                const key = getStoredApiKey();
+                if (!key) {
+                    showToast('💡 បើកប្រអប់បញ្ចូល Gemini API Key សម្រាប់ Cloud AI');
+                    openModal('api-key-modal');
+                    return;
+                }
+                currentCalcEngine = 'gemini';
+                showToast('🤖 បានប្តូរទៅកាន់ Cloud Gemini AI');
+            } else {
+                currentCalcEngine = 'auto';
+                showToast('⚡ បានប្តូរទៅកាន់ Auto ក្នុងម៉ាស៊ីន (Offline - មិនបាច់ API)');
+            }
+            localStorage.setItem('math_calc_engine', currentCalcEngine);
+            updateCalcEngineUI();
+        }
+
+        function updateCalcEngineUI() {
+            const label = document.getElementById('calc-engine-label');
+            const icon = document.getElementById('calc-engine-icon');
+            const btn = document.getElementById('btn-calc-engine-toggle');
+            const pill = document.getElementById('ai-math-status-pill');
+            if (!btn) return;
+
+            if (currentCalcEngine === 'gemini') {
+                btn.className = "px-2.5 py-1.5 rounded-xl bg-violet-600/30 hover:bg-violet-600/45 border border-violet-500/60 text-violet-200 text-xs font-semibold flex items-center gap-1.5 shrink-0 transition";
+                if (label) label.innerText = 'ម៉ាស៊ីន៖ Gemini AI';
+                if (icon) {
+                    icon.setAttribute('data-lucide', 'sparkles');
+                    icon.className = 'w-3.5 h-3.5 text-violet-300';
+                }
+                if (pill) pill.innerText = 'គណនា: 🤖 Gemini AI រួចរាល់';
+            } else {
+                btn.className = "px-2.5 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/45 border border-emerald-500/60 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 shrink-0 transition";
+                if (label) label.innerText = 'ម៉ាស៊ីន៖ Auto (Offline)';
+                if (icon) {
+                    icon.setAttribute('data-lucide', 'zap');
+                    icon.className = 'w-3.5 h-3.5 text-emerald-300';
+                }
+                if (pill) pill.innerText = 'គណនា: ⚡ Auto (Offline) រួចរាល់';
+            }
+            if (window.lucide) lucide.createIcons();
+        }
 
         // Helper: Device Pixel Ratio for Retina/HiDPI display rendering
         function getDPR() {
@@ -747,12 +828,13 @@
                     label.className = 'hidden sm:inline text-emerald-300 font-semibold';
                 }
             } else {
-                if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-slate-500';
                 if (label) {
-                    label.innerText = 'API Key';
-                    label.className = 'hidden sm:inline text-amber-200';
+                    label.innerText = 'API Key (Optional)';
+                    label.className = 'hidden sm:inline text-slate-400';
                 }
             }
+            updateCalcEngineUI();
         }
 
         function saveApiKeySettings() {
@@ -2336,25 +2418,436 @@
             };
         }
 
-        async function triggerHandwrittenMathSolve(customRegion) {
-            if (isAIProcessingMath) return;
+        async function getTesseractWorker() {
+            if (typeof Tesseract === 'undefined') return null;
+            if (window.tesseractWorkerInstance) return window.tesseractWorkerInstance;
+            try {
+                const worker = await Tesseract.createWorker('eng');
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789+-*/=^()xy. ',
+                });
+                window.tesseractWorkerInstance = worker;
+                return worker;
+            } catch (e) {
+                console.warn('Tesseract worker init error:', e);
+                return null;
+            }
+        }
 
-            const apiKey = getStoredApiKey();
-            if (!apiKey) {
-                showToast('🔑 សូមបញ្ចូល Gemini API Key (Free) ដើម្បីប្រើប្រាស់មុខងារ AI គណនា');
-                openModal('api-key-modal');
-                return;
+        function decimalToFraction(val) {
+            if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) return String(val);
+            if (Math.abs(val - Math.round(val)) < 1e-6) return String(Math.round(val));
+            const tolerance = 1e-6;
+            let h1 = 1, h2 = 0, k1 = 0, k2 = 1;
+            let b = val;
+            do {
+                let a = Math.floor(b);
+                let aux = h1; h1 = a * h1 + h2; h2 = aux;
+                aux = k1; k1 = a * k1 + k2; k2 = aux;
+                b = 1 / (b - a);
+            } while (Math.abs(val - h1 / k1) > val * tolerance && k1 < 1000);
+            return `${h1}/${k1}`;
+        }
+
+        function solveMathExpression(str) {
+            if (!str || typeof str !== 'string') return null;
+            let clean = str.trim()
+                .replace(/[០-៩]/g, d => '0123456789'['០១២៣៤៥៦៧៨៩'.indexOf(d)])
+                .replace(/×/g, '*')
+                .replace(/÷/g, '/')
+                .replace(/:/g, '/')
+                .replace(/=/g, ' = ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            // Check if linear equation like '2x + 4 = 10' or '3y - 5 = 10'
+            const eqMatch = clean.match(/^([0-9+\-*/^().\sxy]+)\s*=\s*([0-9+\-*/^().\sxy]*)$/i);
+            if (eqMatch) {
+                const lhs = eqMatch[1].trim();
+                const rhs = eqMatch[2].trim();
+                if (!rhs || rhs === '' || rhs === '?') {
+                    return solveArithmetic(lhs);
+                }
+                if (/[xy]/i.test(lhs) || /[xy]/i.test(rhs)) {
+                    return solveLinearEquation(lhs, rhs);
+                }
             }
 
-            const region = customRegion || computeRecentMathRegion() || getDrawnItemsBounds();
-            if (!region || region.w < 10 || region.h < 10) {
-                showToast('ℹ️ សូមសរសេរលេខ ឬរូបមន្តនៅលើក្ដាជាមុនសិន');
+            return solveArithmetic(clean.replace(/=/g, ''));
+        }
+
+        function solveArithmetic(expr) {
+            try {
+                let jsExpr = expr.trim()
+                    .replace(/\^/g, '**')
+                    .replace(/(\d+)\s*\(/g, '$1*(')
+                    .replace(/\)\s*(\d+)/g, ')*$1')
+                    .replace(/sqrt\s*\(([^)]+)\)/g, 'Math.sqrt($1)');
+
+                jsExpr = jsExpr.replace(/[^0-9+\-*/().*Math.sqrt ]/g, '');
+                if (!jsExpr || jsExpr.trim() === '') return null;
+
+                const val = Function('"use strict"; return (' + jsExpr + ')')();
+                if (typeof val === 'number' && isFinite(val)) {
+                    const rounded = Math.round(val * 1000000) / 1000000;
+                    const frac = decimalToFraction(rounded);
+                    const disp = (frac !== String(rounded) && !frac.includes('.')) ? `${rounded} (${frac})` : String(rounded);
+                    return {
+                        expression: expr,
+                        answer: String(rounded),
+                        fraction: frac !== String(rounded) ? frac : '',
+                        displayAnswer: disp,
+                        isEquationOrFunction: false,
+                        plottableFn: ''
+                    };
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        function solveLinearEquation(lhs, rhs) {
+            if (/^y\s*=\s*/i.test(lhs + ' = ' + rhs)) {
+                return {
+                    expression: lhs + ' = ' + rhs,
+                    answer: rhs,
+                    displayAnswer: rhs,
+                    isEquationOrFunction: true,
+                    plottableFn: rhs.replace(/([0-9])x/gi, '$1*x').replace(/\^/g, '**')
+                };
+            }
+            const varName = /[x]/i.test(lhs + rhs) ? 'x' : 'y';
+            try {
+                const toVal = (val, expr) => {
+                    let s = expr.replace(new RegExp(varName, 'gi'), '(' + val + ')')
+                                .replace(/([0-9])\(/g, '$1*(')
+                                .replace(/\)\(/g, ')*(')
+                                .replace(/\^/g, '**');
+                    s = s.replace(/[^0-9+\-*/(). ]/g, '');
+                    return Function('"use strict"; return (' + s + ')')();
+                };
+                let bestVal = null;
+                for (let test = -200; test <= 200; test += 0.5) {
+                    try {
+                        const diff = Math.abs(toVal(test, lhs) - toVal(test, rhs));
+                        if (diff < 0.0001) {
+                            bestVal = test;
+                            break;
+                        }
+                    } catch (e) {}
+                }
+                if (bestVal !== null) {
+                    return {
+                        expression: lhs + ' = ' + rhs,
+                        answer: `${varName} = ${bestVal}`,
+                        displayAnswer: `${varName} = ${bestVal}`,
+                        isEquationOrFunction: true,
+                        plottableFn: ''
+                    };
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        function parseHandwrittenStrokesToMath(strokes) {
+            if (!strokes || strokes.length === 0) return null;
+            let sorted = [...strokes].sort((a, b) => a.bounds.x - b.bounds.x);
+
+            // Remove last 2 horizontal strokes (= sign)
+            if (sorted.length >= 2) {
+                const s1 = sorted[sorted.length - 2].bounds;
+                const s2 = sorted[sorted.length - 1].bounds;
+                if (s1.w > 12 && s2.w > 12 && s1.h < s1.w * 0.7 && s2.h < s2.w * 0.7) {
+                    sorted = sorted.slice(0, -2);
+                }
+            }
+            if (sorted.length === 0) return null;
+
+            const clusters = [];
+            let cur = [sorted[0]];
+            for (let i = 1; i < sorted.length; i++) {
+                const prev = cur[cur.length - 1].bounds;
+                const c = sorted[i].bounds;
+                const overlapX = Math.min(prev.x + prev.w, c.x + c.w) - Math.max(prev.x, c.x);
+                const gap = c.x - (prev.x + prev.w);
+                if (overlapX > -10 || gap < 14) {
+                    cur.push(sorted[i]);
+                } else {
+                    clusters.push(cur);
+                    cur = [sorted[i]];
+                }
+            }
+            if (cur.length > 0) clusters.push(cur);
+
+            let res = '';
+            for (const cl of clusters) {
+                if (cl.length === 1) {
+                    const ch = classifySingleStroke(cl[0]);
+                    if (ch) res += ch;
+                } else if (cl.length === 2) {
+                    const ch = classifyTwoStrokes(cl[0], cl[1]);
+                    if (ch) res += ch;
+                }
+            }
+            return res || null;
+        }
+
+        function classifyTwoStrokes(s1, s2) {
+            const b1 = s1.bounds, b2 = s2.bounds;
+            const cx1 = b1.x + b1.w / 2, cy1 = b1.y + b1.h / 2;
+            const cx2 = b2.x + b2.w / 2, cy2 = b2.y + b2.h / 2;
+            const centerDist = Math.hypot(cx1 - cx2, cy1 - cy2);
+
+            const isH1 = b1.w > b1.h * 1.5;
+            const isV1 = b1.h > b1.w * 1.5;
+            const isH2 = b2.w > b2.h * 1.5;
+            const isV2 = b2.h > b2.w * 1.5;
+
+            // Plus sign (+)
+            if ((isH1 && isV2) || (isV1 && isH2)) {
+                if (centerDist < Math.max(b1.w, b1.h, b2.w, b2.h) * 0.7) return '+';
+            }
+            // Multiply (x)
+            if (s1.pts && s2.pts && s1.pts.length >= 2 && s2.pts.length >= 2) {
+                const d1 = s1.pts[s1.pts.length - 1].x - s1.pts[0].x;
+                const d2 = s2.pts[s2.pts.length - 1].x - s2.pts[0].x;
+                if (Math.sign(d1) !== Math.sign(d2) && centerDist < Math.max(b1.w, b2.w) * 0.85) return '*';
+            }
+            // Equal sign (=)
+            if (isH1 && isH2 && Math.abs(cx1 - cx2) < Math.max(b1.w, b2.w) * 0.6) return '=';
+            // Digit 4
+            if (isV1 || isV2) return '4';
+            return null;
+        }
+
+        function classifySingleStroke(stroke) {
+            const pts = stroke.pts || [];
+            const b = stroke.bounds || { w: 10, h: 10, x: 0, y: 0 };
+            const w = b.w, h = b.h;
+            const n = pts.length;
+            if (n < 2) return null;
+
+            const start = pts[0];
+            const end = pts[n - 1];
+            const distStartEnd = Math.hypot(start.x - end.x, start.y - end.y);
+            const maxDim = Math.max(w, h);
+
+            if (w < 12 && h < 12) return '.';
+            if (w > 14 && h < w * 0.45) return '-';
+            if (h > 16 && w < h * 0.42) return '1';
+            if (distStartEnd < 0.35 * maxDim && w > 12 && h > 14) return '0';
+            if (w > 12 && h > 14) {
+                const mid = pts[Math.floor(n / 2)];
+                if (start.y < b.y + h * 0.4 && mid.x > b.x + w * 0.6 && end.y > b.y + h * 0.7) return '7';
+            }
+            if (w > 10 && h > 15 && start.x < end.x && start.y > end.y) return '/';
+            return null;
+        }
+
+        function renderHighContrastMathSnapshot(region) {
+            const pad = 25;
+            const rw = Math.max(80, region.w + pad * 2);
+            const rh = Math.max(50, region.h + pad * 2);
+            const snap = document.createElement('canvas');
+            const scale = Math.max(1.5, Math.min(3, 140 / rh));
+            snap.width = Math.round(rw * scale);
+            snap.height = Math.round(rh * scale);
+            const ctx = snap.getContext('2d');
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, snap.width, snap.height);
+
+            ctx.save();
+            ctx.scale(scale, scale);
+            ctx.translate(-region.x + pad, -region.y + pad);
+
+            const slide = slides[currentSlideIdx];
+            if (slide && slide.items) {
+                for (const item of slide.items) {
+                    if (item.type === 'stroke' && item.points) {
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = Math.max(4, (item.size || 3) * 1.3);
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.beginPath();
+                        for (let i = 0; i < item.points.length; i++) {
+                            const p = item.points[i];
+                            if (i === 0) ctx.moveTo(p.x, p.y);
+                            else ctx.lineTo(p.x, p.y);
+                        }
+                        ctx.stroke();
+                    } else if (item.type === 'text') {
+                        ctx.fillStyle = '#000000';
+                        ctx.font = `bold ${item.size}px 'Inter', sans-serif`;
+                        ctx.fillText(item.text, item.x, item.y);
+                    }
+                }
+            }
+            ctx.restore();
+            return snap;
+        }
+
+        function showQuickMathPrompt(initialVal, region) {
+            const bar = document.getElementById('quick-math-bar');
+            const input = document.getElementById('quick-math-input');
+            if (!bar || !input) return;
+
+            input.value = initialVal || '';
+            quickMathActiveRegion = region;
+
+            const x = Math.min(viewport.clientWidth - 300, Math.max(20, (region.eqRightX || 260) + 16));
+            const y = Math.min(viewport.clientHeight - 80, Math.max(70, (region.eqCenterY || 200) - 20));
+            bar.style.left = `${x}px`;
+            bar.style.top = `${y}px`;
+            bar.classList.remove('hidden');
+            setTimeout(() => input.focus(), 50);
+        }
+
+        function hideQuickMathPrompt() {
+            const bar = document.getElementById('quick-math-bar');
+            if (bar) bar.classList.add('hidden');
+            quickMathActiveRegion = null;
+        }
+
+        function executeQuickMathPrompt() {
+            const input = document.getElementById('quick-math-input');
+            if (!input) return;
+            const val = input.value.trim();
+            if (!val) {
+                showToast('សូមបញ្ចូលលេខ ឬកន្សោមគណិតវិទ្យា');
+                return;
+            }
+            const region = quickMathActiveRegion || computeRecentMathRegion() || getDrawnItemsBounds() || {
+                eqRightX: 280,
+                eqCenterY: 220,
+                digitHeight: 36
+            };
+            hideQuickMathPrompt();
+            const solution = solveMathExpression(val);
+            if (solution) {
+                writeAIAnswerNextToEquals(solution.displayAnswer, region);
+                speakText('ចម្លើយគឺ ' + solution.displayAnswer);
+                showToast(`⚡ គណនា៖ ${solution.expression} = ${solution.displayAnswer}`);
+                const pill = document.getElementById('ai-math-status-pill');
+                if (pill) pill.innerText = `⚡ Auto: ${solution.expression} → ${solution.displayAnswer}`;
+                if (solution.isEquationOrFunction) {
+                    showAIEquationActionBar(solution, solution.displayAnswer);
+                }
+            } else {
+                showToast('មិនអាចគណនាកន្សោមនេះបានទេ');
+            }
+        }
+
+        async function solveMathOffline(region) {
+            isAIProcessingMath = true;
+            const pill = document.getElementById('ai-math-status-pill');
+            if (pill) pill.innerText = '⚡ Auto គណនា: កំពុងវិភាគកន្សោម...';
+
+            try {
+                let candidateExprs = [];
+
+                // 1. Geometric stroke recognition
+                const strokeExpr = parseHandwrittenStrokesToMath(recentMathStrokes);
+                if (strokeExpr) candidateExprs.push(strokeExpr);
+
+                // 2. Text elements on canvas
+                const slide = slides[currentSlideIdx];
+                if (slide && slide.items) {
+                    for (const item of slide.items) {
+                        if (item.type === 'text' && item.bounds) {
+                            const ib = item.bounds;
+                            const overlaps = !(ib.x > region.x + region.w || ib.x + ib.w < region.x || ib.y > region.y + region.h || ib.y + ib.h < region.y);
+                            if (overlaps && item.text) {
+                                candidateExprs.push(item.text);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Tesseract OCR on high-contrast snapshot
+                const snap = renderHighContrastMathSnapshot(region);
+                if (typeof Tesseract !== 'undefined') {
+                    try {
+                        const worker = await getTesseractWorker();
+                        if (worker) {
+                            const ocrResult = await worker.recognize(snap);
+                            const ocrText = ocrResult?.data?.text || '';
+                            if (ocrText.trim()) {
+                                candidateExprs.unshift(ocrText.trim());
+                            }
+                        }
+                    } catch (ocrErr) {
+                        console.warn('Tesseract OCR error:', ocrErr);
+                    }
+                }
+
+                // 4. Solve candidate
+                let bestSolution = null;
+                for (const raw of candidateExprs) {
+                    const sol = solveMathExpression(raw);
+                    if (sol) {
+                        bestSolution = sol;
+                        break;
+                    }
+                }
+
+                // Fuzzy OCR corrections
+                if (!bestSolution && candidateExprs.length > 0) {
+                    for (const raw of candidateExprs) {
+                        const cleaned = raw.replace(/[Oo]/g, '0')
+                                           .replace(/[lI|]/g, '1')
+                                           .replace(/[S]/g, '5')
+                                           .replace(/[Z]/g, '2')
+                                           .replace(/[B]/g, '8');
+                        const sol = solveMathExpression(cleaned);
+                        if (sol) {
+                            bestSolution = sol;
+                            break;
+                        }
+                    }
+                }
+
+                if (bestSolution) {
+                    writeAIAnswerNextToEquals(bestSolution.displayAnswer, region);
+                    const pillText = `⚡ Auto: ${bestSolution.expression} → ${bestSolution.displayAnswer}`;
+                    if (pill) pill.innerText = pillText;
+                    showToast(`⚡ Auto គណនា (Offline)៖ ${bestSolution.expression} = ${bestSolution.displayAnswer}`);
+
+                    lastAIDetectedEquation = bestSolution;
+                    if (bestSolution.isEquationOrFunction) {
+                        showAIEquationActionBar(bestSolution, bestSolution.displayAnswer);
+                    }
+
+                    const speakStr = bestSolution.fraction
+                        ? `ចម្លើយគឺ ប្រភាគ ${bestSolution.fraction.replace('/', ' ភាគ ')}`
+                        : `ចម្លើយគឺ ${bestSolution.displayAnswer}`;
+                    speakText(speakStr);
+                    recentMathStrokes = [];
+                } else {
+                    const guess = candidateExprs[0] || '';
+                    if (pill) pill.innerText = '⚡ Auto: រង់ចាំការបញ្ជាក់';
+                    showQuickMathPrompt(guess, region);
+                    showToast('ℹ️ សូមពិនិត្យ ឬវាយរូបមន្តដើម្បីគណនាភ្លាមៗ');
+                }
+            } catch (err) {
+                console.error('Offline math solve error:', err);
+                if (pill) pill.innerText = '⚡ Auto គណនា (=): រួចរាល់';
+                showQuickMathPrompt('', region);
+            } finally {
+                isAIProcessingMath = false;
+            }
+        }
+
+        async function solveMathWithGemini(region) {
+            const apiKey = getStoredApiKey();
+            if (!apiKey) {
+                showToast('🔑 សូមបញ្ចូល Gemini API Key (Free) ដើម្បីប្រើប្រាស់មុខងារ Cloud AI');
+                openModal('api-key-modal');
                 return;
             }
 
             isAIProcessingMath = true;
             const pill = document.getElementById('ai-math-status-pill');
-            if (pill) pill.innerText = 'AI គណនា (=): កំពុងវិភាគ...';
+            if (pill) pill.innerText = '🤖 Gemini AI: កំពុងវិភាគ...';
 
             try {
                 // Render lightweight and sharp snapshot for Gemini Vision (max 700x700)
@@ -2444,6 +2937,9 @@ Look at the handwritten math expression, equation, or function in this image (e.
                     }]
                 };
 
+                let responseData = null;
+                let lastError = '';
+
                 for (const m of modelsToTry) {
                     const apiUrl = `https://generativelanguage.googleapis.com/${activeVersion}/models/${m}:generateContent?key=${apiKey}`;
                     try {
@@ -2522,6 +3018,23 @@ Look at the handwritten math expression, equation, or function in this image (e.
                 showToast('មានបញ្ហាក្នុងការភ្ជាប់ AI គណនា សូមព្យាយាមម្ដងទៀត');
             } finally {
                 isAIProcessingMath = false;
+            }
+        }
+
+        async function triggerHandwrittenMathSolve(customRegion) {
+            if (isAIProcessingMath) return;
+
+            const region = customRegion || computeRecentMathRegion() || getDrawnItemsBounds();
+            if (!region || region.w < 10 || region.h < 10) {
+                showToast('ℹ️ សូមសរសេរលេខ ឬរូបមន្តនៅលើក្ដាជាមុនសិន');
+                return;
+            }
+
+            const hasApiKey = !!getStoredApiKey();
+            if (currentCalcEngine === 'gemini' && hasApiKey) {
+                await solveMathWithGemini(region);
+            } else {
+                await solveMathOffline(region);
             }
         }
 
@@ -3179,6 +3692,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
             resizeCanvases();
             renderLaserAndSpotlightLoop();
             updateApiKeyIndicator();
+            updateCalcEngineUI();
         };
     </script>
 </body>
