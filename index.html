@@ -36,7 +36,7 @@
             </div>
             <div class="hidden md:block">
                 <h1 class="text-sm font-bold leading-tight text-white">ក្ដាខៀនឆ្លាតវៃ AI</h1>
-                <p class="text-[10px] text-emerald-400">Smart Classroom Board</p>
+                <p class="text-[10px] text-emerald-400">Smart Classroom Board (HD Vector)</p>
             </div>
         </div>
 
@@ -122,18 +122,11 @@
 
     <!-- Main Interactive Whiteboard Workspace -->
     <main id="board-viewport" class="relative flex-1 w-full h-full overflow-hidden bg-[#143d29] transition-colors duration-300">
-        <!-- Zoomable & Pannable World Container -->
-        <div id="board-world" class="absolute inset-0 origin-top-left will-change-transform">
-            <!-- Grid / Ruled Background Layer -->
-            <canvas id="grid-canvas" class="absolute inset-0 pointer-events-none"></canvas>
-            <!-- Main Drawing Layer -->
-            <canvas id="main-canvas" class="absolute inset-0 cursor-crosshair"></canvas>
-            <!-- Preview / Shape / Selection Layer -->
-            <canvas id="preview-canvas" class="absolute inset-0 pointer-events-none"></canvas>
-        </div>
-
-        <!-- Laser & Spotlight Overlay Layer (Screen Space) -->
-        <canvas id="overlay-canvas" class="absolute inset-0 pointer-events-none z-10"></canvas>
+        <!-- Native Vector Canvas Layers (Sharp at all zoom scales) -->
+        <canvas id="grid-canvas" class="absolute inset-0 pointer-events-none w-full h-full"></canvas>
+        <canvas id="main-canvas" class="absolute inset-0 cursor-crosshair w-full h-full"></canvas>
+        <canvas id="preview-canvas" class="absolute inset-0 pointer-events-none w-full h-full"></canvas>
+        <canvas id="overlay-canvas" class="absolute inset-0 pointer-events-none z-10 w-full h-full"></canvas>
 
         <!-- Screen Shade (វាំងននបិទបាំងចម្លើយ) -->
         <div id="screen-shade" class="hidden absolute inset-x-0 top-0 h-1/2 bg-slate-900/95 border-b-4 border-amber-500 z-20 flex flex-col items-center justify-end pb-3 shadow-2xl">
@@ -224,7 +217,7 @@
             <div class="flex items-center gap-1 bg-slate-900/85 backdrop-blur-md text-white px-2 py-1 rounded-full border border-slate-700/80 text-xs shadow-lg">
                 <button onclick="zoomBoard(-0.15)" title="បង្រួម" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="zoom-out" class="w-3.5 h-3.5"></i></button>
                 <button onclick="resetBoardZoom()" id="zoom-level-label" title="ត្រឡប់មក 100%" class="px-1.5 font-mono font-bold text-sky-300">100%</button>
-                <button onclick="zoomBoard(0.15)" title="ពង្រីក" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="zoom-in" class="w-3.5 h-3.5"></i></button>
+                <button onclick="zoomBoard(0.15)" title="ពង្រីក (គ្មានបែកព្រិល)" class="p-1 hover:bg-slate-700 rounded-full"><i data-lucide="zoom-in" class="w-3.5 h-3.5"></i></button>
             </div>
         </div>
 
@@ -573,10 +566,9 @@
 
     <script>
         // =====================================================================
-        // 1. INITIALIZATION & STATE MANAGEMENT
+        // 1. INITIALIZATION & VECTOR STATE MANAGEMENT
         // =====================================================================
         const viewport = document.getElementById('board-viewport');
-        const worldEl = document.getElementById('board-world');
         const gridCanvas = document.getElementById('grid-canvas');
         const gridCtx = gridCanvas.getContext('2d');
         const canvas = document.getElementById('main-canvas');
@@ -593,11 +585,10 @@
         let startX = 0, startY = 0;
         let lastPt = { x: 0, y: 0 };
         let strokePoints = [];
-        let drawnObjects = [];
         let selectedObject = null;
         let selectionBox = null;
 
-        // Board Appearance & Modes
+        // Board Appearance & Themes
         const themes = [
             { id: 'chalkboard', label: 'ក្ដាបៃតង', bg: '#143d29', defaultPen: '#ffffff', gridColor: 'rgba(255,255,255,0.12)' },
             { id: 'whiteboard', label: 'ក្ដាស', bg: '#f8fafc', defaultPen: '#0f172a', gridColor: 'rgba(15,23,42,0.10)' },
@@ -621,14 +612,20 @@
         let spotlightPos = { x: 400, y: 300 };
         let laserTrail = [];
 
-        // Zoom & Pan State
+        // High-Precision Zoom & Pan Vector Engine
         let boardScale = 1.0;
         let boardPan = { x: 0, y: 0 };
         let isPanningBoard = false;
         let panStart = { x: 0, y: 0 };
 
-        // Slides & Undo/Redo History
-        let slides = [{ history: [], step: -1, objects: [] }];
+        // Pinch-to-zoom multi-touch tracking
+        let activeTouches = {};
+        let touchStartDist = 0;
+        let touchStartScale = 1.0;
+        let touchCenterStart = { x: 0, y: 0 };
+
+        // Slides & Vector Undo/Redo Engine
+        let slides = [{ items: [], undoStack: [], redoStack: [] }];
         let currentSlideIdx = 0;
 
         // Last detected shape for 3D reconstruction
@@ -645,6 +642,11 @@
         let recentMathStrokes = [];
         let lastAIDetectedEquation = null;
         let lastCalcOutput = { decimal: '', fraction: '' };
+
+        // Helper: Device Pixel Ratio for Retina/HiDPI display rendering
+        function getDPR() {
+            return Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+        }
 
         // =====================================================================
         // API KEY MANAGEMENT (LOCAL STORAGE & SETTINGS)
@@ -668,19 +670,15 @@
             if (select) select.value = getStoredModel();
 
             if (key) {
-                if (dot) {
-                    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
-                }
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
                 if (label) {
                     label.innerText = 'API Key: រួចរាល់';
                     label.className = 'hidden sm:inline text-emerald-300 font-semibold';
                 }
             } else {
-                if (dot) {
-                    dot.className = 'w-2 h-2 rounded-full bg-amber-400';
-                }
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400';
                 if (label) {
-                    label.innerText = 'ដាក់ API Key';
+                    label.innerText = 'API Key';
                     label.className = 'hidden sm:inline text-amber-200';
                 }
             }
@@ -766,49 +764,49 @@
         }
 
         // =====================================================================
-        // 2. CANVAS RESIZING & GRID RENDERING (PRESERVES DRAWINGS)
+        // 2. HI-DPI CANVASES & VECTOR RE-RENDERING (NO BLURRING ON ZOOM)
         // =====================================================================
         function resizeCanvases() {
             const w = viewport.clientWidth || window.innerWidth;
             const h = viewport.clientHeight || (window.innerHeight - 56);
-
-            // Preserve existing main canvas content before resizing
-            let tempCanvas = null;
-            if (canvas.width > 0 && canvas.height > 0) {
-                tempCanvas = document.createElement('canvas');
-                tempCanvas.width = canvas.width;
-                tempCanvas.height = canvas.height;
-                tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
-            }
+            const dpr = getDPR();
 
             [gridCanvas, canvas, previewCanvas, overlayCanvas].forEach(c => {
-                c.width = w;
-                c.height = h;
+                c.width = Math.round(w * dpr);
+                c.height = Math.round(h * dpr);
+                c.style.width = `${w}px`;
+                c.style.height = `${h}px`;
             });
 
-            if (tempCanvas) {
-                ctx.drawImage(tempCanvas, 0, 0);
-            }
             renderBoardGrid();
+            renderBoard();
         }
 
         function renderBoardGrid() {
-            const w = gridCanvas.width;
-            const h = gridCanvas.height;
-            gridCtx.clearRect(0, 0, w, h);
+            const w = viewport.clientWidth;
+            const h = viewport.clientHeight;
+            const dpr = getDPR();
+
+            gridCtx.setTransform(1, 0, 0, 1, 0, 0);
+            gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
             const gridType = grids[gridIndex].id;
             if (gridType === 'none') return;
 
             const color = themes[themeIndex].gridColor;
             gridCtx.save();
+            gridCtx.scale(dpr, dpr);
             gridCtx.strokeStyle = color;
             gridCtx.fillStyle = color;
             gridCtx.lineWidth = 1;
 
-            const step = 36;
+            const baseStep = 36;
+            const step = baseStep * boardScale;
+            const offsetX = ((boardPan.x % step) + step) % step;
+            const offsetY = ((boardPan.y % step) + step) % step;
+
             if (gridType === 'dots') {
-                for (let x = step; x < w; x += step) {
-                    for (let y = step; y < h; y += step) {
+                for (let x = offsetX; x < w; x += step) {
+                    for (let y = offsetY; y < h; y += step) {
                         gridCtx.beginPath();
                         gridCtx.arc(x, y, 1.5, 0, Math.PI * 2);
                         gridCtx.fill();
@@ -816,24 +814,43 @@
                 }
             } else if (gridType === 'squares') {
                 gridCtx.beginPath();
-                for (let x = 0; x <= w; x += step) {
+                for (let x = offsetX; x <= w; x += step) {
                     gridCtx.moveTo(x, 0);
                     gridCtx.lineTo(x, h);
                 }
-                for (let y = 0; y <= h; y += step) {
+                for (let y = offsetY; y <= h; y += step) {
                     gridCtx.moveTo(0, y);
                     gridCtx.lineTo(w, y);
                 }
                 gridCtx.stroke();
             } else if (gridType === 'ruled') {
+                const ruledStep = 44 * boardScale;
+                const ruledOffsetY = ((boardPan.y % ruledStep) + ruledStep) % ruledStep;
                 gridCtx.beginPath();
-                for (let y = 48; y <= h; y += 44) {
+                for (let y = ruledOffsetY; y <= h; y += ruledStep) {
                     gridCtx.moveTo(0, y);
                     gridCtx.lineTo(w, y);
                 }
                 gridCtx.stroke();
             }
             gridCtx.restore();
+        }
+
+        // Master Vector Redraw: Re-renders all items crisply directly at current scale
+        function renderBoard() {
+            const dpr = getDPR();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Apply world coordinates with scale and pan scaled by DPR
+            ctx.setTransform(dpr * boardScale, 0, 0, dpr * boardScale, dpr * boardPan.x, dpr * boardPan.y);
+
+            const slide = slides[currentSlideIdx];
+            if (!slide || !slide.items) return;
+
+            for (const item of slide.items) {
+                drawItem(ctx, item);
+            }
         }
 
         function cycleBoardTheme() {
@@ -844,6 +861,7 @@
             document.getElementById('theme-label').innerText = t.label;
             setColor(t.defaultPen);
             renderBoardGrid();
+            renderBoard();
             if (!document.getElementById('interactive-axes-widget').classList.contains('hidden')) {
                 renderInteractiveAxesCanvas();
             }
@@ -858,16 +876,17 @@
         }
 
         // =====================================================================
-        // 3. ZOOM & PAN CONTROLS
+        // 3. ZOOM & PAN CONTROLS (VECTOR-BASED, CRYSTAL CLEAR AT ALL SCALES)
         // =====================================================================
         function applyBoardTransform() {
-            worldEl.style.transform = `translate(${boardPan.x}px, ${boardPan.y}px) scale(${boardScale})`;
+            renderBoardGrid();
+            renderBoard();
             document.getElementById('zoom-level-label').innerText = `${Math.round(boardScale * 100)}%`;
         }
 
         function zoomBoard(delta, centerX = viewport.clientWidth / 2, centerY = viewport.clientHeight / 2) {
             const oldScale = boardScale;
-            boardScale = Math.max(0.4, Math.min(4.0, boardScale + delta));
+            boardScale = Math.max(0.3, Math.min(5.0, boardScale + delta));
             const ratio = boardScale / oldScale;
             boardPan.x = centerX - (centerX - boardPan.x) * ratio;
             boardPan.y = centerY - (centerY - boardPan.y) * ratio;
@@ -890,15 +909,380 @@
         }
 
         viewport.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                const rect = viewport.getBoundingClientRect();
-                zoomBoard(e.deltaY < 0 ? 0.12 : -0.12, e.clientX - rect.left, e.clientY - rect.top);
-            }
+            e.preventDefault();
+            const rect = viewport.getBoundingClientRect();
+            const zoomDelta = e.deltaY < 0 ? 0.14 : -0.14;
+            zoomBoard(zoomDelta, e.clientX - rect.left, e.clientY - rect.top);
         }, { passive: false });
 
         // =====================================================================
-        // 4. TOOLS, DRAWING, SHAPES & AUTO-SHAPE RECOGNITION
+        // 4. VECTOR ITEM DRAWING ENGINE
+        // =====================================================================
+        function drawItem(targetCtx, item) {
+            if (!item) return;
+            switch (item.type) {
+                case 'stroke':
+                    drawStroke(targetCtx, item);
+                    break;
+                case 'shape':
+                    drawGeometricShape(targetCtx, item.shapeType, item.x1, item.y1, item.x2, item.y2, item.color, item.size);
+                    break;
+                case 'text':
+                    drawVectorText(targetCtx, item);
+                    break;
+                case 'axes2d':
+                    drawVectorAxes2D(targetCtx, item.x, item.y, item.w, item.h, item.color || '#38bdf8', item.rot2D || 0);
+                    break;
+                case 'axes3d':
+                    drawVectorAxes3D(targetCtx, item.x, item.y, item.w, item.h, item.color || '#38bdf8', item.yaw || -0.62, item.pitch || 0.42);
+                    break;
+                case 'solid3d':
+                    drawVectorSolid3D(targetCtx, item.solidType, item.x, item.y, item.w, item.h, item.color || currentColor, item.size || 2.4);
+                    break;
+                case 'graph':
+                    drawVectorGraph(targetCtx, item);
+                    break;
+                case 'unitcircle':
+                    drawVectorUnitCircle(targetCtx, item.x, item.y, item.w, item.h, item.color || currentColor);
+                    break;
+                case 'image':
+                    if (item.img && item.img.complete) {
+                        targetCtx.save();
+                        targetCtx.imageSmoothingEnabled = true;
+                        targetCtx.imageSmoothingQuality = 'high';
+                        targetCtx.drawImage(item.img, item.x, item.y, item.w, item.h);
+                        targetCtx.restore();
+                    }
+                    break;
+            }
+        }
+
+        // Draw freehand stroke with smooth quadratic Bezier curve to eliminate jagged pixels
+        function drawStroke(targetCtx, stroke) {
+            if (!stroke.points || stroke.points.length === 0) return;
+            targetCtx.save();
+            if (stroke.tool === 'eraser') {
+                targetCtx.globalCompositeOperation = 'destination-out';
+                targetCtx.lineWidth = stroke.size * 5;
+            } else if (stroke.tool === 'highlighter') {
+                targetCtx.globalAlpha = 0.35;
+                targetCtx.strokeStyle = stroke.color;
+                targetCtx.lineWidth = stroke.size * 4;
+            } else {
+                targetCtx.strokeStyle = stroke.color;
+                targetCtx.lineWidth = stroke.size;
+            }
+            targetCtx.lineCap = 'round';
+            targetCtx.lineJoin = 'round';
+
+            targetCtx.beginPath();
+            const pts = stroke.points;
+            targetCtx.moveTo(pts[0].x, pts[0].y);
+
+            if (pts.length === 1) {
+                targetCtx.lineTo(pts[0].x + 0.1, pts[0].y + 0.1);
+            } else if (pts.length === 2) {
+                targetCtx.lineTo(pts[1].x, pts[1].y);
+            } else {
+                for (let i = 1; i < pts.length - 1; i++) {
+                    const midX = (pts[i].x + pts[i + 1].x) / 2;
+                    const midY = (pts[i].y + pts[i + 1].y) / 2;
+                    targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+                }
+                targetCtx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+            }
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        function drawGeometricShape(targetCtx, type, x1, y1, x2, y2, color, width) {
+            targetCtx.save();
+            targetCtx.strokeStyle = color;
+            targetCtx.lineWidth = width;
+            targetCtx.lineCap = 'round';
+            targetCtx.lineJoin = 'round';
+            targetCtx.beginPath();
+
+            if (type === 'line') {
+                targetCtx.moveTo(x1, y1);
+                targetCtx.lineTo(x2, y2);
+            } else if (type === 'rect') {
+                targetCtx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+                targetCtx.restore();
+                return;
+            } else if (type === 'circle') {
+                const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+                const rx = Math.max(4, Math.abs(x2 - x1) / 2);
+                const ry = Math.max(4, Math.abs(y2 - y1) / 2);
+                targetCtx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+            } else if (type === 'triangle') {
+                const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+                const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                targetCtx.moveTo((minX + maxX) / 2, minY);
+                targetCtx.lineTo(maxX, maxY);
+                targetCtx.lineTo(minX, maxY);
+                targetCtx.closePath();
+            }
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        function drawVectorText(targetCtx, item) {
+            targetCtx.save();
+            targetCtx.fillStyle = item.color || currentColor;
+            targetCtx.font = `600 ${item.size || 32}px 'Kantumruy Pro', 'Inter', sans-serif`;
+            targetCtx.textBaseline = item.baseline || 'top';
+            targetCtx.fillText(item.text, item.x, item.y);
+            targetCtx.restore();
+        }
+
+        function drawArrowHead(targetCtx, fromX, fromY, toX, toY, headLen = 10) {
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            targetCtx.beginPath();
+            targetCtx.moveTo(toX, toY);
+            targetCtx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+            targetCtx.moveTo(toX, toY);
+            targetCtx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+            targetCtx.stroke();
+        }
+
+        function drawVectorAxes2D(targetCtx, x, y, w, h, color, rot2D = 0) {
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            const len = Math.min(w, h) * 0.42;
+
+            targetCtx.save();
+            targetCtx.strokeStyle = color;
+            targetCtx.fillStyle = color;
+            targetCtx.lineWidth = 2.4;
+            targetCtx.font = "bold 13px 'Inter', sans-serif";
+
+            const cosA = Math.cos(rot2D), sinA = Math.sin(rot2D);
+            const x1 = cx - len * cosA, y1 = cy - len * sinA;
+            const x2 = cx + len * cosA, y2 = cy + len * sinA;
+            targetCtx.beginPath(); targetCtx.moveTo(x1, y1); targetCtx.lineTo(x2, y2); targetCtx.stroke();
+            drawArrowHead(targetCtx, x1, y1, x2, y2, 10);
+
+            const yx1 = cx + len * sinA, yy1 = cy - len * cosA;
+            const yx2 = cx - len * sinA, yy2 = cy + len * cosA;
+            targetCtx.beginPath(); targetCtx.moveTo(yx2, yy2); targetCtx.lineTo(yx1, yy1); targetCtx.stroke();
+            drawArrowHead(targetCtx, yx2, yy2, yx1, yy1, 10);
+
+            targetCtx.fillText('O', cx - 15, cy + 16);
+            targetCtx.fillText('x', x2 + 6, y2 + 4);
+            targetCtx.fillText('y', yx1 + 6, yy1 - 4);
+            targetCtx.restore();
+        }
+
+        function drawVectorAxes3D(targetCtx, x, y, w, h, color, yaw = -0.62, pitch = 0.42) {
+            const cx = x + w / 2;
+            const cy = y + h / 2;
+            const len = Math.min(w, h) * 0.38;
+
+            targetCtx.save();
+            targetCtx.strokeStyle = color;
+            targetCtx.fillStyle = color;
+            targetCtx.lineWidth = 2.4;
+            targetCtx.font = "bold 13px 'Inter', sans-serif";
+
+            const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
+            const cp = Math.cos(pitch), sp = Math.sin(pitch);
+
+            const project3D = (vx, vy, vz) => {
+                const rx = vx * cyaw - vy * syaw;
+                const ry = vx * syaw + vy * cyaw;
+                return {
+                    x: cx + ry * len,
+                    y: cy - vz * cp * len + rx * sp * len
+                };
+            };
+
+            const pO = project3D(0, 0, 0);
+            const pX = project3D(1, 0, 0);
+            const pY = project3D(0, 1, 0);
+            const pZ = project3D(0, 0, 1);
+
+            targetCtx.save();
+            targetCtx.setLineDash([5, 5]);
+            targetCtx.globalAlpha = 0.45;
+            targetCtx.beginPath();
+            const pNegX = project3D(-0.7, 0, 0);
+            const pNegY = project3D(0, -0.7, 0);
+            const pNegZ = project3D(0, 0, -0.7);
+            targetCtx.moveTo(pO.x, pO.y); targetCtx.lineTo(pNegX.x, pNegX.y);
+            targetCtx.moveTo(pO.x, pO.y); targetCtx.lineTo(pNegY.x, pNegY.y);
+            targetCtx.moveTo(pO.x, pO.y); targetCtx.lineTo(pNegZ.x, pNegZ.y);
+            targetCtx.stroke();
+            targetCtx.restore();
+
+            const drawRay = (endPt, rayColor, label) => {
+                targetCtx.strokeStyle = rayColor;
+                targetCtx.fillStyle = rayColor;
+                targetCtx.beginPath();
+                targetCtx.moveTo(pO.x, pO.y);
+                targetCtx.lineTo(endPt.x, endPt.y);
+                targetCtx.stroke();
+                drawArrowHead(targetCtx, pO.x, pO.y, endPt.x, endPt.y, 10);
+                targetCtx.fillText(label, endPt.x + 6, endPt.y + 4);
+            };
+
+            drawRay(pX, '#f87171', 'x');
+            drawRay(pY, '#4ade80', 'y');
+            drawRay(pZ, '#38bdf8', 'z');
+
+            targetCtx.fillStyle = color;
+            targetCtx.fillText('O', pO.x - 14, pO.y + 14);
+            targetCtx.restore();
+        }
+
+        function drawVectorSolid3D(targetCtx, solidType, x, y, w, h, color, size = 2.4) {
+            targetCtx.save();
+            targetCtx.strokeStyle = color;
+            targetCtx.lineWidth = size;
+            targetCtx.lineJoin = 'round';
+
+            if (solidType === 'cube') {
+                const s = 120, off = 42;
+                const fx = x + 30, fy = y + 60;
+                const bx = fx + off, by = fy - off;
+                targetCtx.strokeRect(fx, fy, s, s);
+                targetCtx.beginPath();
+                targetCtx.moveTo(fx, fy); targetCtx.lineTo(bx, by);
+                targetCtx.lineTo(bx + s, by); targetCtx.lineTo(fx + s, fy);
+                targetCtx.moveTo(bx + s, by); targetCtx.lineTo(bx + s, by + s);
+                targetCtx.lineTo(fx + s, fy + s);
+                targetCtx.stroke();
+                targetCtx.setLineDash([5, 5]);
+                targetCtx.beginPath();
+                targetCtx.moveTo(bx, by); targetCtx.lineTo(bx, by + s);
+                targetCtx.lineTo(fx, fy + s);
+                targetCtx.moveTo(bx, by + s); targetCtx.lineTo(bx + s, by + s);
+                targetCtx.stroke();
+            } else if (solidType === 'cylinder') {
+                const cx = x + w / 2, topY = y + 45, botY = y + 175, rx = 60, ry = 18;
+                targetCtx.beginPath();
+                targetCtx.ellipse(cx, topY, rx, ry, 0, 0, Math.PI * 2);
+                targetCtx.moveTo(cx - rx, topY); targetCtx.lineTo(cx - rx, botY);
+                targetCtx.moveTo(cx + rx, topY); targetCtx.lineTo(cx + rx, botY);
+                targetCtx.ellipse(cx, botY, rx, ry, 0, 0, Math.PI);
+                targetCtx.stroke();
+                targetCtx.setLineDash([5, 5]);
+                targetCtx.beginPath();
+                targetCtx.ellipse(cx, botY, rx, ry, 0, Math.PI, Math.PI * 2);
+                targetCtx.stroke();
+            } else if (solidType === 'cone') {
+                const cx = x + w / 2, apexY = y + 35, botY = y + 175, rx = 65, ry = 20;
+                targetCtx.beginPath();
+                targetCtx.moveTo(cx, apexY); targetCtx.lineTo(cx - rx, botY);
+                targetCtx.moveTo(cx, apexY); targetCtx.lineTo(cx + rx, botY);
+                targetCtx.ellipse(cx, botY, rx, ry, 0, 0, Math.PI);
+                targetCtx.stroke();
+                targetCtx.setLineDash([5, 5]);
+                targetCtx.beginPath();
+                targetCtx.ellipse(cx, botY, rx, ry, 0, Math.PI, Math.PI * 2);
+                targetCtx.moveTo(cx, apexY); targetCtx.lineTo(cx, botY);
+                targetCtx.stroke();
+            } else if (solidType === 'pyramid') {
+                const apex = { x: x + 110, y: y + 32 };
+                const p1 = { x: x + 40, y: y + 165 };
+                const p2 = { x: x + 145, y: y + 185 };
+                const p3 = { x: x + 190, y: y + 140 };
+                const p4 = { x: x + 85, y: y + 125 };
+                targetCtx.beginPath();
+                targetCtx.moveTo(apex.x, apex.y); targetCtx.lineTo(p1.x, p1.y);
+                targetCtx.lineTo(p2.x, p2.y); targetCtx.lineTo(p3.x, p3.y);
+                targetCtx.closePath();
+                targetCtx.moveTo(apex.x, apex.y); targetCtx.lineTo(p2.x, p2.y);
+                targetCtx.stroke();
+                targetCtx.setLineDash([5, 5]);
+                targetCtx.beginPath();
+                targetCtx.moveTo(apex.x, apex.y); targetCtx.lineTo(p4.x, p4.y);
+                targetCtx.lineTo(p1.x, p1.y);
+                targetCtx.moveTo(p4.x, p4.y); targetCtx.lineTo(p3.x, p3.y);
+                targetCtx.stroke();
+            } else if (solidType === 'sphere') {
+                const cx = x + w / 2, cy = y + h / 2, r = 72;
+                targetCtx.beginPath();
+                targetCtx.arc(cx, cy, r, 0, Math.PI * 2);
+                targetCtx.ellipse(cx, cy, r, r * 0.3, 0, 0, Math.PI);
+                targetCtx.stroke();
+                targetCtx.setLineDash([5, 5]);
+                targetCtx.beginPath();
+                targetCtx.ellipse(cx, cy, r, r * 0.3, 0, Math.PI, Math.PI * 2);
+                targetCtx.stroke();
+            } else if (solidType === 'prism') {
+                const t1 = { x: x + 95, y: y + 30 }, t2 = { x: x + 45, y: y + 75 }, t3 = { x: x + 165, y: y + 75 };
+                const b1 = { x: x + 95, y: y + 135 }, b2 = { x: x + 45, y: y + 180 }, b3 = { x: x + 165, y: y + 180 };
+                targetCtx.beginPath();
+                targetCtx.moveTo(t1.x, t1.y); targetCtx.lineTo(t2.x, t2.y); targetCtx.lineTo(t3.x, t3.y); targetCtx.closePath();
+                targetCtx.moveTo(t2.x, t2.y); targetCtx.lineTo(b2.x, b2.y); targetCtx.lineTo(b3.x, b3.y); targetCtx.lineTo(t3.x, t3.y);
+                targetCtx.stroke();
+                targetCtx.setLineDash([5, 5]);
+                targetCtx.beginPath();
+                targetCtx.moveTo(t1.x, t1.y); targetCtx.lineTo(b1.x, b1.y);
+                targetCtx.lineTo(b2.x, b2.y);
+                targetCtx.moveTo(b1.x, b1.y); targetCtx.lineTo(b3.x, b3.y);
+                targetCtx.stroke();
+            }
+            targetCtx.restore();
+        }
+
+        function drawVectorGraph(targetCtx, item) {
+            const { x, y, w, h, fnStr, includeAxes } = item;
+            const cx = x + w / 2, cy = y + h / 2;
+            const unit = 32;
+
+            if (includeAxes) {
+                drawVectorAxes2D(targetCtx, x, y, w, h, currentTheme === 'whiteboard' ? '#475569' : '#94a3b8', 0);
+            }
+
+            let fn;
+            try { fn = compileMathFunction(fnStr); } catch (e) { return; }
+
+            targetCtx.save();
+            targetCtx.strokeStyle = item.color || '#38bdf8';
+            targetCtx.lineWidth = 3;
+            targetCtx.beginPath();
+            let started = false;
+
+            for (let px = x + 10; px <= x + w - 10; px += 2) {
+                const mathX = (px - cx) / unit;
+                let mathY;
+                try { mathY = fn(mathX); } catch (e) { continue; }
+                if (typeof mathY !== 'number' || !isFinite(mathY)) { started = false; continue; }
+                const py = cy - mathY * unit;
+                if (py < y || py > y + h) { started = false; continue; }
+                if (!started) { targetCtx.moveTo(px, py); started = true; }
+                else { targetCtx.lineTo(px, py); }
+            }
+            targetCtx.stroke();
+
+            targetCtx.fillStyle = item.color || '#38bdf8';
+            targetCtx.font = "bold 15px 'Inter', sans-serif";
+            targetCtx.fillText(`y = ${fnStr}`, x + 14, y + 22);
+            targetCtx.restore();
+        }
+
+        function drawVectorUnitCircle(targetCtx, x, y, w, h, color) {
+            const r = Math.min(w, h) * 0.35;
+            const cx = x + w / 2, cy = y + h / 2;
+            drawVectorAxes2D(targetCtx, x, y, w, h, color, 0);
+
+            targetCtx.save();
+            targetCtx.strokeStyle = '#fbbf24';
+            targetCtx.lineWidth = 2.5;
+            targetCtx.beginPath();
+            targetCtx.arc(cx, cy, r, 0, Math.PI * 2);
+            targetCtx.stroke();
+            targetCtx.fillStyle = '#fbbf24';
+            targetCtx.font = "bold 12px 'Inter', sans-serif";
+            targetCtx.fillText('1', cx + r + 5, cy - 5);
+            targetCtx.fillText('1', cx + 5, cy - r - 5);
+            targetCtx.restore();
+        }
+
+        // =====================================================================
+        // 5. AUTO-SHAPE RECOGNITION
         // =====================================================================
         function selectTool(tool) {
             currentTool = tool;
@@ -914,7 +1298,7 @@
             canvas.style.cursor = tool === 'select' ? 'default' : (tool === 'text' ? 'text' : 'crosshair');
             hideContextMenu();
             if (tool !== 'select') {
-                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                clearPreviewCanvas();
                 selectionBox = null;
             }
         }
@@ -993,38 +1377,6 @@
             return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
         }
 
-        function drawGeometricShape(targetCtx, type, x1, y1, x2, y2, color, width) {
-            targetCtx.save();
-            targetCtx.strokeStyle = color;
-            targetCtx.lineWidth = width;
-            targetCtx.lineCap = 'round';
-            targetCtx.lineJoin = 'round';
-            targetCtx.beginPath();
-
-            if (type === 'line') {
-                targetCtx.moveTo(x1, y1);
-                targetCtx.lineTo(x2, y2);
-            } else if (type === 'rect') {
-                targetCtx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
-                targetCtx.restore();
-                return;
-            } else if (type === 'circle') {
-                const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
-                const rx = Math.max(4, Math.abs(x2 - x1) / 2);
-                const ry = Math.max(4, Math.abs(y2 - y1) / 2);
-                targetCtx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-            } else if (type === 'triangle') {
-                const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
-                const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
-                targetCtx.moveTo((minX + maxX) / 2, minY);
-                targetCtx.lineTo(maxX, maxY);
-                targetCtx.lineTo(minX, maxY);
-                targetCtx.closePath();
-            }
-            targetCtx.stroke();
-            targetCtx.restore();
-        }
-
         function recognizeFreehandShape(pts) {
             if (pts.length < 8) return null;
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, pathLen = 0;
@@ -1041,7 +1393,6 @@
             const startEndDist = Math.hypot(pts[pts.length - 1].x - pts[0].x, pts[pts.length - 1].y - pts[0].y);
             const diag = Math.hypot(w, h);
 
-            // Straight Line check
             if (pathLen < diag * 1.14 && diag > 45) {
                 return {
                     type: 'line',
@@ -1051,7 +1402,6 @@
                 };
             }
 
-            // Closed shape check (Circle, Triangle, Rectangle)
             if (startEndDist < Math.max(35, diag * 0.25) && pathLen > 90) {
                 const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
                 const rx = w / 2, ry = h / 2;
@@ -1072,7 +1422,6 @@
                     };
                 }
 
-                // Compare bounding box fill / perimeter ratio for triangle vs rect
                 const rectPerim = 2 * (w + h);
                 if (pathLen > rectPerim * 0.85 && pathLen < rectPerim * 1.2) {
                     return {
@@ -1103,8 +1452,18 @@
             document.getElementById('detected-shape-badge').innerText = `រាងចុងក្រោយ៖ ${lastDetectedShape.labelKh}`;
         }
 
+        function clearPreviewCanvas() {
+            previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        }
+
+        function setupPreviewTransform() {
+            const dpr = getDPR();
+            previewCtx.setTransform(dpr * boardScale, 0, 0, dpr * boardScale, dpr * boardPan.x, dpr * boardPan.y);
+        }
+
         // =====================================================================
-        // 5. POINTER EVENTS (DRAWING, SELECTION, LASER, PANNING)
+        // 6. POINTER EVENTS (TOUCH, MULTI-TOUCH PINCH, MOUSE DRAWING & PANNING)
         // =====================================================================
         function handlePointerDown(clientX, clientY, button = 0, shiftKey = false) {
             hideContextMenu();
@@ -1133,25 +1492,6 @@
 
             isDrawing = true;
             strokePoints = [pt];
-
-            if (currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'eraser') {
-                ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(pt.x, pt.y);
-                if (currentTool === 'eraser') {
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.lineWidth = brushSize * 5;
-                } else if (currentTool === 'highlighter') {
-                    ctx.globalAlpha = 0.35;
-                    ctx.strokeStyle = currentColor;
-                    ctx.lineWidth = brushSize * 4;
-                } else {
-                    ctx.strokeStyle = currentColor;
-                    ctx.lineWidth = brushSize;
-                }
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-            }
         }
 
         function handlePointerMove(clientX, clientY) {
@@ -1179,10 +1519,17 @@
             strokePoints.push(pt);
 
             if (currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'eraser') {
-                ctx.lineTo(pt.x, pt.y);
-                ctx.stroke();
+                clearPreviewCanvas();
+                setupPreviewTransform();
+                drawStroke(previewCtx, {
+                    tool: currentTool,
+                    color: currentColor,
+                    size: brushSize,
+                    points: strokePoints
+                });
             } else if (['line', 'rect', 'circle', 'triangle', 'axes2d', 'axes3d'].includes(currentTool)) {
-                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                clearPreviewCanvas();
+                setupPreviewTransform();
                 if (currentTool === 'axes2d' || currentTool === 'axes3d') {
                     previewCtx.save();
                     previewCtx.strokeStyle = '#38bdf8';
@@ -1193,7 +1540,8 @@
                     drawGeometricShape(previewCtx, currentTool, startX, startY, pt.x, pt.y, currentColor, brushSize);
                 }
             } else if (currentTool === 'select') {
-                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                clearPreviewCanvas();
+                setupPreviewTransform();
                 drawSelectionMarquee(Math.min(startX, pt.x), Math.min(startY, pt.y), Math.abs(pt.x - startX), Math.abs(pt.y - startY));
             }
         }
@@ -1208,7 +1556,8 @@
 
             if (currentTool === 'laser') return;
 
-            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            clearPreviewCanvas();
+            const slide = slides[currentSlideIdx];
 
             if (['line', 'rect', 'circle', 'triangle', 'axes2d', 'axes3d'].includes(currentTool)) {
                 const bounds = {
@@ -1222,11 +1571,23 @@
                     showToast('អូសលើអ័ក្សដោយផ្ទាល់ដើម្បីបង្វិល 360° ឬចុច «ដាក់ជាប់ក្ដា»!');
                     return;
                 }
-                drawGeometricShape(ctx, currentTool, startX, startY, lastPt.x, lastPt.y, currentColor, brushSize);
-                const shapePts = generateShapeOutlinePoints(currentTool, startX, startY, lastPt.x, lastPt.y);
-                drawnObjects.push({ type: currentTool, bounds, points: shapePts, labelKh: getShapeLabelKh(currentTool) });
-                updateLastDetectedShape(currentTool, shapePts, bounds);
+
                 saveHistoryState();
+                const shapePts = generateShapeOutlinePoints(currentTool, startX, startY, lastPt.x, lastPt.y);
+                const item = {
+                    type: 'shape',
+                    shapeType: currentTool,
+                    x1: startX, y1: startY, x2: lastPt.x, y2: lastPt.y,
+                    color: currentColor,
+                    size: brushSize,
+                    bounds,
+                    points: shapePts,
+                    labelKh: getShapeLabelKh(currentTool)
+                };
+                slide.items.push(item);
+                updateLastDetectedShape(currentTool, shapePts, bounds);
+                renderBoard();
+
                 if (auto3DModeEnabled && currentTool !== 'line') {
                     setTimeout(() => open3DStudioFromBoard(), 220);
                 }
@@ -1239,20 +1600,29 @@
                 } else {
                     selectionBox = { x: Math.min(startX, lastPt.x), y: Math.min(startY, lastPt.y), w, h };
                     selectedObject = findObjectInBox(selectionBox);
+                    setupPreviewTransform();
                     drawSelectionMarquee(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
                     showToast('បានជ្រើសរើសតំបន់ • ចុច Mouse ស្ដាំដើម្បីបង្ហាញក្នុងលំហ 3D');
                 }
             } else if (currentTool === 'pen' || currentTool === 'highlighter' || currentTool === 'eraser') {
-                ctx.restore();
-                if (currentTool === 'pen' && strokePoints.length > 2) {
-                    const recognized = autoShapeEnabled ? recognizeFreehandShape(strokePoints) : null;
+                if (strokePoints.length > 2) {
+                    saveHistoryState();
+                    const recognized = (autoShapeEnabled && currentTool === 'pen') ? recognizeFreehandShape(strokePoints) : null;
                     if (recognized && recognized.type !== 'line') {
-                        // Restore before this freehand stroke and draw clean geometric shape
-                        restorePreviousStepForShape();
-                        drawGeometricShape(ctx, recognized.type, ...recognized.drawArgs, currentColor, brushSize);
-                        drawnObjects.push({ type: recognized.type, bounds: recognized.bounds, points: recognized.points, labelKh: getShapeLabelKh(recognized.type) });
+                        const item = {
+                            type: 'shape',
+                            shapeType: recognized.type,
+                            x1: recognized.drawArgs[0], y1: recognized.drawArgs[1],
+                            x2: recognized.drawArgs[2], y2: recognized.drawArgs[3],
+                            color: currentColor,
+                            size: brushSize,
+                            bounds: recognized.bounds,
+                            points: recognized.points,
+                            labelKh: getShapeLabelKh(recognized.type)
+                        };
+                        slide.items.push(item);
                         updateLastDetectedShape(recognized.type, recognized.points, recognized.bounds);
-                        saveHistoryState();
+                        renderBoard();
                         showToast(`Auto-Shape៖ បានកែតម្រូវទៅជា ${getShapeLabelKh(recognized.type)}`);
                         if (auto3DModeEnabled) {
                             setTimeout(() => open3DStudioFromBoard(), 220);
@@ -1260,12 +1630,23 @@
                         return;
                     } else {
                         const bounds = getStrokeBounds(strokePoints);
-                        drawnObjects.push({ type: 'polygon', bounds, points: strokePoints, labelKh: 'គំនូរដៃ' });
+                        const item = {
+                            type: 'stroke',
+                            tool: currentTool,
+                            color: currentColor,
+                            size: brushSize,
+                            points: [...strokePoints],
+                            bounds,
+                            labelKh: 'គំនូរដៃ'
+                        };
+                        slide.items.push(item);
                         updateLastDetectedShape('polygon', strokePoints, bounds);
-                        trackStrokeForMathAI(strokePoints, bounds);
+                        renderBoard();
+                        if (currentTool === 'pen') {
+                            trackStrokeForMathAI(strokePoints, bounds);
+                        }
                     }
                 }
-                saveHistoryState();
             }
         }
 
@@ -1280,7 +1661,7 @@
             return { x: minX, y: minY, w: Math.max(10, maxX - minX), h: Math.max(10, maxY - minY) };
         }
 
-        // Mouse & Touch Event Listeners
+        // Mouse & Touch Listeners with Multi-Touch Pinch-to-Zoom
         canvas.addEventListener('mousedown', (e) => handlePointerDown(e.clientX, e.clientY, e.button, e.shiftKey));
         window.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
         window.addEventListener('mouseup', () => handlePointerUp());
@@ -1289,15 +1670,50 @@
             if (e.touches.length === 1) {
                 e.preventDefault();
                 handlePointerDown(e.touches[0].clientX, e.touches[0].clientY, 0, false);
+            } else if (e.touches.length === 2) {
+                // Two finger pinch-to-zoom
+                e.preventDefault();
+                isDrawing = false;
+                clearPreviewCanvas();
+                const t1 = e.touches[0], t2 = e.touches[1];
+                touchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                touchStartScale = boardScale;
+                touchCenterStart = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
             }
         }, { passive: false });
+
         canvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 1) {
+            if (e.touches.length === 1 && !touchStartDist) {
                 e.preventDefault();
                 handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                const t1 = e.touches[0], t2 = e.touches[1];
+                const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                if (touchStartDist > 0) {
+                    const factor = currentDist / touchStartDist;
+                    const newScale = Math.max(0.3, Math.min(5.0, touchStartScale * factor));
+                    const center = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+                    const rect = viewport.getBoundingClientRect();
+                    const centerX = center.x - rect.left;
+                    const centerY = center.y - rect.top;
+                    const ratio = newScale / boardScale;
+                    boardScale = newScale;
+                    boardPan.x = centerX - (centerX - boardPan.x) * ratio + (center.x - touchCenterStart.x) * 0.2;
+                    boardPan.y = centerY - (centerY - boardPan.y) * ratio + (center.y - touchCenterStart.y) * 0.2;
+                    applyBoardTransform();
+                }
             }
         }, { passive: false });
-        canvas.addEventListener('touchend', () => handlePointerUp());
+
+        canvas.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                touchStartDist = 0;
+            }
+            if (e.touches.length === 0) {
+                handlePointerUp();
+            }
+        });
 
         // Right-Click Context Menu
         canvas.addEventListener('contextmenu', (e) => {
@@ -1307,9 +1723,10 @@
                 const hit = findObjectAtPoint(pt.x, pt.y);
                 if (hit) setSelectionFromObject(hit);
             }
-            if (selectionBox || drawnObjects.length > 0) {
-                if (!selectionBox) {
-                    setSelectionFromObject(drawnObjects[drawnObjects.length - 1]);
+            const slide = slides[currentSlideIdx];
+            if (selectionBox || (slide.items && slide.items.length > 0)) {
+                if (!selectionBox && slide.items.length > 0) {
+                    setSelectionFromObject(slide.items[slide.items.length - 1]);
                 }
                 const menu = document.getElementById('board-context-menu');
                 menu.style.left = `${Math.min(window.innerWidth - 250, e.clientX)}px`;
@@ -1334,21 +1751,26 @@
         }
 
         function findObjectAtPoint(x, y) {
-            for (let i = drawnObjects.length - 1; i >= 0; i--) {
-                const b = drawnObjects[i].bounds;
-                if (x >= b.x - 12 && x <= b.x + b.w + 12 && y >= b.y - 12 && y <= b.y + b.h + 12) {
-                    return drawnObjects[i];
+            const slide = slides[currentSlideIdx];
+            if (!slide || !slide.items) return null;
+            for (let i = slide.items.length - 1; i >= 0; i--) {
+                const b = slide.items[i].bounds;
+                if (b && x >= b.x - 12 && x <= b.x + b.w + 12 && y >= b.y - 12 && y <= b.y + b.h + 12) {
+                    return slide.items[i];
                 }
             }
             return null;
         }
 
         function findObjectInBox(box) {
-            for (let i = drawnObjects.length - 1; i >= 0; i--) {
-                const b = drawnObjects[i].bounds;
+            const slide = slides[currentSlideIdx];
+            if (!slide || !slide.items) return null;
+            for (let i = slide.items.length - 1; i >= 0; i--) {
+                const b = slide.items[i].bounds;
+                if (!b) continue;
                 const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
                 if (cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h) {
-                    return drawnObjects[i];
+                    return slide.items[i];
                 }
             }
             return null;
@@ -1358,18 +1780,22 @@
             selectedObject = obj;
             selectionBox = { ...obj.bounds };
             updateLastDetectedShape(obj.type, obj.points, obj.bounds);
-            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            clearPreviewCanvas();
+            setupPreviewTransform();
             drawSelectionMarquee(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
         }
 
         function deleteSelectedRegion() {
             hideContextMenu();
-            if (!selectionBox) return;
-            ctx.clearRect(selectionBox.x - 4, selectionBox.y - 4, selectionBox.w + 8, selectionBox.h + 8);
-            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            const slide = slides[currentSlideIdx];
+            if (!selectionBox || !slide) return;
+
+            saveHistoryState();
+            slide.items = slide.items.filter(item => item !== selectedObject);
+            clearPreviewCanvas();
             selectionBox = null;
             selectedObject = null;
-            saveHistoryState();
+            renderBoard();
             showToast('បានលុបតំបន់ដែលបានជ្រើសរើស');
         }
 
@@ -1393,7 +1819,7 @@
         }
 
         // =====================================================================
-        // 6. TEXT TOOL
+        // 7. TEXT TOOL
         // =====================================================================
         let pendingTextPos = { x: 100, y: 100 };
 
@@ -1419,13 +1845,19 @@
             cancelTextInput();
             if (!text) return;
 
-            ctx.save();
-            ctx.fillStyle = currentColor;
-            ctx.font = `600 ${size}px 'Kantumruy Pro', 'Inter', sans-serif`;
-            ctx.textBaseline = 'top';
-            ctx.fillText(text, pendingTextPos.x, pendingTextPos.y);
-            ctx.restore();
             saveHistoryState();
+            const slide = slides[currentSlideIdx];
+            const item = {
+                type: 'text',
+                text,
+                x: pendingTextPos.x,
+                y: pendingTextPos.y,
+                size,
+                color: currentColor,
+                bounds: { x: pendingTextPos.x, y: pendingTextPos.y, w: text.length * size * 0.6, h: size * 1.2 }
+            };
+            slide.items.push(item);
+            renderBoard();
         }
 
         document.getElementById('board-text-input').addEventListener('keydown', (e) => {
@@ -1434,21 +1866,11 @@
         });
 
         // =====================================================================
-        // 7. INTERACTIVE ROTATABLE COORDINATE AXES (Oxy & Oxyz) & GRAPHS
+        // 8. ROTATABLE INTERACTIVE COORDINATE AXES WIDGET (Oxy & Oxyz)
         // =====================================================================
         let axesWidgetState = { mode: 'axes3d', rot2D: 0, yaw: -0.62, pitch: 0.42 };
         let isRotatingAxesWidget = false;
         let axesRotatePrev = { x: 0, y: 0 };
-
-        function drawArrowHead(targetCtx, fromX, fromY, toX, toY, headLen = 10) {
-            const angle = Math.atan2(toY - fromY, toX - fromX);
-            targetCtx.beginPath();
-            targetCtx.moveTo(toX, toY);
-            targetCtx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
-            targetCtx.moveTo(toX, toY);
-            targetCtx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
-            targetCtx.stroke();
-        }
 
         function openInteractiveAxesWidget(mode, x, y, w, h) {
             const widget = document.getElementById('interactive-axes-widget');
@@ -1458,8 +1880,8 @@
             axesWidgetState.yaw = -0.62;
             axesWidgetState.pitch = 0.42;
 
-            widget.style.left = `${Math.max(20, Math.min(canvas.width - w - 20, x))}px`;
-            widget.style.top = `${Math.max(50, Math.min(canvas.height - h - 20, y))}px`;
+            widget.style.left = `${Math.max(20, Math.min(viewport.clientWidth - w - 20, x))}px`;
+            widget.style.top = `${Math.max(50, Math.min(viewport.clientHeight - h - 20, y))}px`;
             widget.style.width = `${w}px`;
             widget.style.height = `${h}px`;
             widget.classList.remove('hidden');
@@ -1485,104 +1907,40 @@
             const aCtx = aCanvas.getContext('2d');
             aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height);
 
-            const cx = aCanvas.width / 2;
-            const cy = aCanvas.height / 2;
             const axisColor = currentTheme === 'whiteboard' ? '#0284c7' : '#38bdf8';
-
-            aCtx.save();
-            aCtx.strokeStyle = axisColor;
-            aCtx.fillStyle = axisColor;
-            aCtx.lineWidth = 2.4;
-            aCtx.font = "bold 14px 'Inter', sans-serif";
-
             if (axesWidgetState.mode === 'axes2d') {
-                const len = Math.min(cx, cy) * 0.82;
-                const ang = axesWidgetState.rot2D;
-                const cosA = Math.cos(ang), sinA = Math.sin(ang);
-
-                const x1 = cx - len * cosA, y1 = cy - len * sinA;
-                const x2 = cx + len * cosA, y2 = cy + len * sinA;
-                aCtx.beginPath(); aCtx.moveTo(x1, y1); aCtx.lineTo(x2, y2); aCtx.stroke();
-                drawArrowHead(aCtx, x1, y1, x2, y2, 10);
-
-                const yx1 = cx + len * sinA, yy1 = cy - len * cosA;
-                const yx2 = cx - len * sinA, yy2 = cy + len * cosA;
-                aCtx.beginPath(); aCtx.moveTo(yx2, yy2); aCtx.lineTo(yx1, yy1); aCtx.stroke();
-                drawArrowHead(aCtx, yx2, yy2, yx1, yy1, 10);
-
-                aCtx.fillText('O', cx - 15, cy + 16);
-                aCtx.fillText('x', x2 + 6, y2 + 4);
-                aCtx.fillText('y', yx1 + 6, yy1 - 4);
+                drawVectorAxes2D(aCtx, 0, 0, aCanvas.width, aCanvas.height, axisColor, axesWidgetState.rot2D);
             } else {
-                const len = Math.min(cx, cy) * 0.78;
-                const cyaw = Math.cos(axesWidgetState.yaw), syaw = Math.sin(axesWidgetState.yaw);
-                const cp = Math.cos(axesWidgetState.pitch), sp = Math.sin(axesWidgetState.pitch);
-
-                const project3D = (vx, vy, vz) => {
-                    const rx = vx * cyaw - vy * syaw;
-                    const ry = vx * syaw + vy * cyaw;
-                    return {
-                        x: cx + ry * len,
-                        y: cy - vz * cp * len + rx * sp * len
-                    };
-                };
-
-                const pO = project3D(0, 0, 0);
-                const pX = project3D(1, 0, 0);
-                const pY = project3D(0, 1, 0);
-                const pZ = project3D(0, 0, 1);
-
-                aCtx.save();
-                aCtx.setLineDash([5, 5]);
-                aCtx.globalAlpha = 0.45;
-                aCtx.beginPath();
-                const pNegX = project3D(-0.7, 0, 0);
-                const pNegY = project3D(0, -0.7, 0);
-                const pNegZ = project3D(0, 0, -0.7);
-                aCtx.moveTo(pO.x, pO.y); aCtx.lineTo(pNegX.x, pNegX.y);
-                aCtx.moveTo(pO.x, pO.y); aCtx.lineTo(pNegY.x, pNegY.y);
-                aCtx.moveTo(pO.x, pO.y); aCtx.lineTo(pNegZ.x, pNegZ.y);
-                aCtx.stroke();
-                aCtx.restore();
-
-                const drawRay = (endPt, rayColor, label) => {
-                    aCtx.strokeStyle = rayColor;
-                    aCtx.fillStyle = rayColor;
-                    aCtx.beginPath();
-                    aCtx.moveTo(pO.x, pO.y);
-                    aCtx.lineTo(endPt.x, endPt.y);
-                    aCtx.stroke();
-                    drawArrowHead(aCtx, pO.x, pO.y, endPt.x, endPt.y, 10);
-                    aCtx.fillText(label, endPt.x + 6, endPt.y + 4);
-                };
-
-                drawRay(pX, '#f87171', 'x');
-                drawRay(pY, '#4ade80', 'y');
-                drawRay(pZ, '#38bdf8', 'z');
-
-                aCtx.fillStyle = axisColor;
-                aCtx.fillText('O', pO.x - 14, pO.y + 14);
+                drawVectorAxes3D(aCtx, 0, 0, aCanvas.width, aCanvas.height, axisColor, axesWidgetState.yaw, axesWidgetState.pitch);
             }
-            aCtx.restore();
         }
 
         function stampInteractiveAxesToBoard() {
             const widget = document.getElementById('interactive-axes-widget');
             const aCanvas = document.getElementById('interactive-axes-canvas');
             if (!widget || !aCanvas) return;
+
             const x = (widget.offsetLeft - boardPan.x) / boardScale;
             const y = (widget.offsetTop - boardPan.y) / boardScale;
             const w = aCanvas.width / boardScale;
             const h = aCanvas.height / boardScale;
-            ctx.drawImage(aCanvas, x, y, w, h);
             const bounds = { x, y, w, h };
-            drawnObjects.push({
+
+            saveHistoryState();
+            const slide = slides[currentSlideIdx];
+            const item = {
                 type: axesWidgetState.mode,
+                x, y, w, h,
+                rot2D: axesWidgetState.rot2D,
+                yaw: axesWidgetState.yaw,
+                pitch: axesWidgetState.pitch,
+                color: currentTheme === 'whiteboard' ? '#0284c7' : '#38bdf8',
                 bounds,
                 points: generateShapeOutlinePoints('rect', x, y, x + w, y + h),
                 labelKh: getShapeLabelKh(axesWidgetState.mode)
-            });
-            saveHistoryState();
+            };
+            slide.items.push(item);
+            renderBoard();
             closeInteractiveAxesWidget();
             showToast('បានដាក់តម្រុយអ័ក្សជាប់លើក្ដាខៀនរួចរាល់!');
         }
@@ -1657,43 +2015,6 @@
             window.addEventListener('touchend', () => { isRotatingAxesWidget = false; });
         })();
 
-        function drawCoordinateAxes2D(targetCtx, x, y, w, h, color, lineWidth = 2) {
-            const cx = x + w / 2, cy = y + h / 2;
-            targetCtx.save();
-            targetCtx.strokeStyle = color;
-            targetCtx.fillStyle = color;
-            targetCtx.lineWidth = lineWidth;
-            targetCtx.font = "bold 13px 'Inter', sans-serif";
-
-            // X and Y axes
-            targetCtx.beginPath();
-            targetCtx.moveTo(x, cy); targetCtx.lineTo(x + w, cy);
-            targetCtx.moveTo(cx, y + h); targetCtx.lineTo(cx, y);
-            targetCtx.stroke();
-            drawArrowHead(targetCtx, x, cy, x + w, cy, 9);
-            drawArrowHead(targetCtx, cx, y + h, cx, y, 9);
-
-            // Unit ticks
-            const unit = 32;
-            for (let gx = cx + unit; gx < x + w - 14; gx += unit) {
-                targetCtx.beginPath(); targetCtx.moveTo(gx, cy - 4); targetCtx.lineTo(gx, cy + 4); targetCtx.stroke();
-            }
-            for (let gx = cx - unit; gx > x + 14; gx -= unit) {
-                targetCtx.beginPath(); targetCtx.moveTo(gx, cy - 4); targetCtx.lineTo(gx, cy + 4); targetCtx.stroke();
-            }
-            for (let gy = cy - unit; gy > y + 14; gy -= unit) {
-                targetCtx.beginPath(); targetCtx.moveTo(cx - 4, gy); targetCtx.lineTo(cx + 4, gy); targetCtx.stroke();
-            }
-            for (let gy = cy + unit; gy < y + h - 14; gy += unit) {
-                targetCtx.beginPath(); targetCtx.moveTo(cx - 4, gy); targetCtx.lineTo(cx + 4, gy); targetCtx.stroke();
-            }
-
-            targetCtx.fillText('O', cx - 15, cy + 16);
-            targetCtx.fillText('x', x + w - 10, cy + 16);
-            targetCtx.fillText('y', cx + 8, y + 14);
-            targetCtx.restore();
-        }
-
         function compileMathFunction(exprStr) {
             const sanitized = exprStr
                 .replace(/\^/g, '**')
@@ -1707,86 +2028,63 @@
             const includeAxes = document.getElementById('graph-include-axes').checked;
             if (!fnStr) return;
 
-            let fn;
             try {
-                fn = compileMathFunction(fnStr);
-                fn(1);
+                const testFn = compileMathFunction(fnStr);
+                testFn(1);
             } catch (err) {
                 showToast('រូបមន្តអនុគមន៍មិនត្រឹមត្រូវ សូមពិនិត្យម្ដងទៀត');
                 return;
             }
 
             closeModal('graph-space-modal');
-            const w = Math.min(440, canvas.width * 0.65);
-            const h = Math.min(340, canvas.height * 0.58);
-            const x = (canvas.width - w) / 2;
-            const y = (canvas.height - h) / 2;
-            const cx = x + w / 2, cy = y + h / 2;
-            const unit = 32;
-
-            if (includeAxes) {
-                drawCoordinateAxes2D(ctx, x, y, w, h, currentTheme === 'whiteboard' ? '#475569' : '#94a3b8', 1.8);
-            }
-
-            ctx.save();
-            ctx.strokeStyle = '#38bdf8';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            let started = false;
-            const curvePts = [];
-            for (let px = x + 10; px <= x + w - 10; px += 2) {
-                const mathX = (px - cx) / unit;
-                let mathY;
-                try { mathY = fn(mathX); } catch (e) { continue; }
-                if (typeof mathY !== 'number' || !isFinite(mathY)) { started = false; continue; }
-                const py = cy - mathY * unit;
-                if (py < y || py > y + h) { started = false; continue; }
-                if (!started) { ctx.moveTo(px, py); started = true; }
-                else { ctx.lineTo(px, py); }
-                curvePts.push({ x: px, y: py });
-            }
-            ctx.stroke();
-
-            ctx.fillStyle = '#38bdf8';
-            ctx.font = "bold 15px 'Inter', sans-serif";
-            ctx.fillText(`y = ${fnStr}`, x + 14, y + 22);
-            ctx.restore();
-
+            const w = Math.min(440, viewport.clientWidth * 0.65);
+            const h = Math.min(340, viewport.clientHeight * 0.58);
+            const x = (viewport.clientWidth - w) / 2;
+            const y = (viewport.clientHeight - h) / 2;
             const bounds = { x, y, w, h };
-            drawnObjects.push({ type: 'polygon', bounds, points: curvePts.length ? curvePts : generateShapeOutlinePoints('rect', x, y, x + w, y + h), labelKh: `ក្រាប y = ${fnStr}` });
-            updateLastDetectedShape('polygon', curvePts, bounds);
+
             saveHistoryState();
+            const slide = slides[currentSlideIdx];
+            const item = {
+                type: 'graph',
+                fnStr,
+                includeAxes,
+                x, y, w, h,
+                color: '#38bdf8',
+                bounds,
+                points: generateShapeOutlinePoints('rect', x, y, x + w, y + h),
+                labelKh: `ក្រាប y = ${fnStr}`
+            };
+            slide.items.push(item);
+            updateLastDetectedShape('polygon', item.points, bounds);
+            renderBoard();
             showToast(`បានគូសក្រាប y = ${fnStr} លើក្ដាខៀន!`);
         }
 
         function insertPresetAxes(type) {
-            const w = Math.min(380, canvas.width * 0.55);
-            const h = Math.min(320, canvas.height * 0.55);
-            const x = (canvas.width - w) / 2;
-            const y = (canvas.height - h) / 2;
+            const w = Math.min(380, viewport.clientWidth * 0.55);
+            const h = Math.min(320, viewport.clientHeight * 0.55);
+            const x = (viewport.clientWidth - w) / 2;
+            const y = (viewport.clientHeight - h) / 2;
 
             if (type === 'axes2d' || type === 'axes3d') {
                 closeModal('graph-space-modal');
                 openInteractiveAxesWidget(type, x, y, w, h);
                 showToast('អូសលើអ័ក្សដោយផ្ទាល់ដើម្បីបង្វិល 360° ឬចុច «ដាក់ជាប់ក្ដា»');
-                return;
             } else if (type === 'unitcircle') {
                 closeModal('graph-space-modal');
-                const r = Math.min(w, h) * 0.35;
-                const cx = x + w / 2, cy = y + h / 2;
-                drawCoordinateAxes2D(ctx, x, y, w, h, currentColor, 2);
-                ctx.save();
-                ctx.strokeStyle = '#fbbf24';
-                ctx.lineWidth = 2.5;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.fillStyle = '#fbbf24';
-                ctx.font = "bold 12px 'Inter', sans-serif";
-                ctx.fillText('1', cx + r + 5, cy - 5);
-                ctx.fillText('1', cx + 5, cy - r - 5);
-                ctx.restore();
                 saveHistoryState();
+                const bounds = { x, y, w, h };
+                const item = {
+                    type: 'unitcircle',
+                    x, y, w, h,
+                    color: currentColor,
+                    bounds,
+                    points: generateShapeOutlinePoints('rect', x, y, x + w, y + h),
+                    labelKh: 'រង្វង់ត្រីកោណមាត្រ'
+                };
+                slides[currentSlideIdx].items.push(item);
+                renderBoard();
                 showToast('បានបញ្ចូលរង្វង់ត្រីកោណមាត្រ!');
             }
         }
@@ -1794,121 +2092,38 @@
         function insert3DSpaceSolid(solidType) {
             closeModal('graph-space-modal');
             const w = 220, h = 220;
-            const x = (canvas.width - w) / 2;
-            const y = (canvas.height - h) / 2;
-
-            ctx.save();
-            ctx.strokeStyle = currentColor;
-            ctx.lineWidth = 2.4;
-            ctx.lineJoin = 'round';
-
-            if (solidType === 'cube') {
-                const s = 120, off = 42;
-                const fx = x + 30, fy = y + 60;
-                const bx = fx + off, by = fy - off;
-                ctx.strokeRect(fx, fy, s, s);
-                // Top and right visible edges
-                ctx.beginPath();
-                ctx.moveTo(fx, fy); ctx.lineTo(bx, by);
-                ctx.lineTo(bx + s, by); ctx.lineTo(fx + s, fy);
-                ctx.moveTo(bx + s, by); ctx.lineTo(bx + s, by + s);
-                ctx.lineTo(fx + s, fy + s);
-                ctx.stroke();
-                // Dashed hidden edges
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.moveTo(bx, by); ctx.lineTo(bx, by + s);
-                ctx.lineTo(fx, fy + s);
-                ctx.moveTo(bx, by + s); ctx.lineTo(bx + s, by + s);
-                ctx.stroke();
-            } else if (solidType === 'cylinder') {
-                const cx = x + w / 2, topY = y + 45, botY = y + 175, rx = 60, ry = 18;
-                ctx.beginPath();
-                ctx.ellipse(cx, topY, rx, ry, 0, 0, Math.PI * 2);
-                ctx.moveTo(cx - rx, topY); ctx.lineTo(cx - rx, botY);
-                ctx.moveTo(cx + rx, topY); ctx.lineTo(cx + rx, botY);
-                ctx.ellipse(cx, botY, rx, ry, 0, 0, Math.PI);
-                ctx.stroke();
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.ellipse(cx, botY, rx, ry, 0, Math.PI, Math.PI * 2);
-                ctx.stroke();
-            } else if (solidType === 'cone') {
-                const cx = x + w / 2, apexY = y + 35, botY = y + 175, rx = 65, ry = 20;
-                ctx.beginPath();
-                ctx.moveTo(cx, apexY); ctx.lineTo(cx - rx, botY);
-                ctx.moveTo(cx, apexY); ctx.lineTo(cx + rx, botY);
-                ctx.ellipse(cx, botY, rx, ry, 0, 0, Math.PI);
-                ctx.stroke();
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.ellipse(cx, botY, rx, ry, 0, Math.PI, Math.PI * 2);
-                ctx.moveTo(cx, apexY); ctx.lineTo(cx, botY);
-                ctx.stroke();
-            } else if (solidType === 'pyramid') {
-                const apex = { x: x + 110, y: y + 32 };
-                const p1 = { x: x + 40, y: y + 165 };
-                const p2 = { x: x + 145, y: y + 185 };
-                const p3 = { x: x + 190, y: y + 140 };
-                const p4 = { x: x + 85, y: y + 125 };
-                ctx.beginPath();
-                ctx.moveTo(apex.x, apex.y); ctx.lineTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
-                ctx.closePath();
-                ctx.moveTo(apex.x, apex.y); ctx.lineTo(p2.x, p2.y);
-                ctx.stroke();
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.moveTo(apex.x, apex.y); ctx.lineTo(p4.x, p4.y);
-                ctx.lineTo(p1.x, p1.y);
-                ctx.moveTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y);
-                ctx.stroke();
-            } else if (solidType === 'sphere') {
-                const cx = x + w / 2, cy = y + h / 2, r = 72;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.ellipse(cx, cy, r, r * 0.3, 0, 0, Math.PI);
-                ctx.stroke();
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.ellipse(cx, cy, r, r * 0.3, 0, Math.PI, Math.PI * 2);
-                ctx.stroke();
-            } else if (solidType === 'prism') {
-                const t1 = { x: x + 95, y: y + 30 }, t2 = { x: x + 45, y: y + 75 }, t3 = { x: x + 165, y: y + 75 };
-                const b1 = { x: x + 95, y: y + 135 }, b2 = { x: x + 45, y: y + 180 }, b3 = { x: x + 165, y: y + 180 };
-                ctx.beginPath();
-                ctx.moveTo(t1.x, t1.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t3.x, t3.y); ctx.closePath();
-                ctx.moveTo(t2.x, t2.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(b3.x, b3.y); ctx.lineTo(t3.x, t3.y);
-                ctx.stroke();
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.moveTo(t1.x, t1.y); ctx.lineTo(b1.x, b1.y);
-                ctx.lineTo(b2.x, b2.y);
-                ctx.moveTo(b1.x, b1.y); ctx.lineTo(b3.x, b3.y);
-                ctx.stroke();
-            }
-            ctx.restore();
-
+            const x = (viewport.clientWidth - w) / 2;
+            const y = (viewport.clientHeight - h) / 2;
             const bounds = { x, y, w, h };
             const pts = generateShapeOutlinePoints('rect', x, y, x + w, y + h);
-            drawnObjects.push({ type: solidType, bounds, points: pts, labelKh: 'រូបធរណីមាត្រក្នុងលំហ' });
-            updateLastDetectedShape(solidType, pts, bounds);
+
             saveHistoryState();
+            const item = {
+                type: 'solid3d',
+                solidType,
+                x, y, w, h,
+                color: currentColor,
+                size: 2.4,
+                bounds,
+                points: pts,
+                labelKh: 'រូបធរណីមាត្រក្នុងលំហ'
+            };
+            slides[currentSlideIdx].items.push(item);
+            updateLastDetectedShape(solidType, pts, bounds);
+            renderBoard();
             showToast('បានគូសរូបធរណីមាត្រក្នុងលំហលើក្ដាខៀន!');
         }
 
         // =====================================================================
-        // 8. HANDWRITTEN MATH AI (= TRIGGER, FRACTIONS & GRAPH/3D ACTIONS)
+        // 9. HANDWRITTEN MATH AI (= TRIGGER, FRACTIONS & ACTIONS)
         // =====================================================================
         function trackStrokeForMathAI(pts, bounds) {
             if (!aiMathEnabled) return;
             recentMathStrokes.push({ pts, bounds, time: Date.now() });
-            // Keep strokes from last 25 seconds
             const cutoff = Date.now() - 25000;
             recentMathStrokes = recentMathStrokes.filter(s => s.time >= cutoff);
 
             if (mathAutoTimer) clearTimeout(mathAutoTimer);
-            // Detect if last two short horizontal strokes form an '=' sign
             if (recentMathStrokes.length >= 2) {
                 const s1 = recentMathStrokes[recentMathStrokes.length - 2].bounds;
                 const s2 = recentMathStrokes[recentMathStrokes.length - 1].bounds;
@@ -1947,8 +2162,8 @@
             return {
                 x: Math.max(0, minX - 24),
                 y: Math.max(0, minY - 24),
-                w: Math.min(canvas.width, maxX - minX + 48),
-                h: Math.min(canvas.height, maxY - minY + 48),
+                w: Math.min(viewport.clientWidth, maxX - minX + 48),
+                h: Math.min(viewport.clientHeight, maxY - minY + 48),
                 eqRightX,
                 eqCenterY,
                 digitHeight: Math.max(24, Math.min(72, maxDigitH))
@@ -1968,10 +2183,10 @@
             const region = customRegion || computeRecentMathRegion() || {
                 x: 0,
                 y: 0,
-                w: canvas.width,
-                h: canvas.height,
-                eqRightX: canvas.width * 0.55,
-                eqCenterY: canvas.height * 0.45,
+                w: viewport.clientWidth,
+                h: viewport.clientHeight,
+                eqRightX: viewport.clientWidth * 0.55,
+                eqCenterY: viewport.clientHeight * 0.45,
                 digitHeight: 36
             };
 
@@ -1980,16 +2195,25 @@
             if (pill) pill.innerText = 'AI គណនា (=): កំពុងវិភាគ...';
 
             try {
-                // Create snapshot for Gemini Vision
+                // High-resolution snapshot directly rendered from vector items for Gemini Vision
                 const snap = document.createElement('canvas');
-                snap.width = Math.max(60, Math.round(region.w));
-                snap.height = Math.max(60, Math.round(region.h));
+                snap.width = Math.max(80, Math.round(region.w));
+                snap.height = Math.max(80, Math.round(region.h));
                 const sCtx = snap.getContext('2d');
                 sCtx.fillStyle = themes[themeIndex].bg;
                 sCtx.fillRect(0, 0, snap.width, snap.height);
-                sCtx.drawImage(canvas, region.x, region.y, region.w, region.h, 0, 0, snap.width, snap.height);
-                const base64Data = snap.toDataURL('image/png').split(',')[1];
 
+                sCtx.save();
+                sCtx.translate(-region.x, -region.y);
+                const slide = slides[currentSlideIdx];
+                if (slide && slide.items) {
+                    for (const item of slide.items) {
+                        drawItem(sCtx, item);
+                    }
+                }
+                sCtx.restore();
+
+                const base64Data = snap.toDataURL('image/png').split(',')[1];
                 const prompt = `You are a math OCR, algebraic equation solver, and function graph analyzer for a smart whiteboard.
 Look at the handwritten math expression, equation, or function in this image (e.g., "3y + 5 = 5", "2x - 4 = 0", "y = 2x + 1", "y = x^2 - 2", or arithmetic like "1/2 + 1/4 =").
 1. Read the expression/equation accurately (converting Khmer digits ០១២៣៤៥៦៧៨៩ to 0-9).
@@ -2028,10 +2252,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
                     } else {
                         const err = await res.json().catch(() => ({}));
                         lastError = err?.error?.message || `Status ${res.status}`;
-                        if (res.status === 400 || res.status === 403) {
-                            // Invalid key or permission error
-                            break;
-                        }
+                        if (res.status === 400 || res.status === 403) break;
                     }
                     if (attempt < 2) {
                         await new Promise(r => setTimeout(r, delay));
@@ -2079,16 +2300,23 @@ Look at the handwritten math expression, equation, or function in this image (e.
 
         function writeAIAnswerNextToEquals(answerText, region) {
             const fontSize = Math.round((region.digitHeight || 36) * 0.95);
-            const drawX = Math.min(canvas.width - 140, (region.eqRightX || 260) + 14);
+            const drawX = Math.min(viewport.clientWidth - 140, (region.eqRightX || 260) + 14);
             const drawY = region.eqCenterY || 200;
 
-            ctx.save();
-            ctx.fillStyle = currentTheme === 'whiteboard' ? '#059669' : '#4ade80';
-            ctx.font = `bold ${fontSize}px 'Kantumruy Pro', 'Inter', sans-serif`;
-            ctx.textBaseline = 'middle';
-            ctx.fillText(answerText, drawX, drawY);
-            ctx.restore();
             saveHistoryState();
+            const slide = slides[currentSlideIdx];
+            const item = {
+                type: 'text',
+                text: answerText,
+                x: drawX,
+                y: drawY,
+                size: fontSize,
+                baseline: 'middle',
+                color: currentTheme === 'whiteboard' ? '#059669' : '#4ade80',
+                bounds: { x: drawX, y: drawY - fontSize / 2, w: answerText.length * fontSize * 0.6, h: fontSize }
+            };
+            slide.items.push(item);
+            renderBoard();
         }
 
         function showAIEquationActionBar(parsed, finalOutput) {
@@ -2150,7 +2378,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
         }
 
         // =====================================================================
-        // 9. AUTO 3D STUDIO (THREE.JS - EXACT SHAPE MATCH & CLEAN WIREFRAME)
+        // 10. AUTO 3D STUDIO (THREE.JS - EXACT SHAPE MATCH & CLEAN WIREFRAME)
         // =====================================================================
         let threeScene = null, threeCamera = null, threeRenderer = null;
         let current3DMesh = null;
@@ -2252,7 +2480,6 @@ Look at the handwritten math expression, equation, or function in this image (e.
             });
             current3DMesh = new THREE.Mesh(geometry, mat);
 
-            // Clean edges only (no diagonal triangle lines)
             const edgesGeo = new THREE.EdgesGeometry(geometry, 22);
             const edgeLines = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({ color: threeColor }));
             edgeLines.name = 'cleanEdges';
@@ -2279,7 +2506,6 @@ Look at the handwritten math expression, equation, or function in this image (e.
             const aspect = Math.max(0.4, Math.min(2.4, (b.w || 160) / (b.h || 140)));
 
             if (type === 'extrude') {
-                // Build exact 3D match from last drawn shape
                 if (lastDetectedShape.type === 'circle') {
                     const geo = new THREE.SphereGeometry(1.15, 36, 28);
                     geo.scale(aspect >= 1 ? 1.15 : aspect, aspect >= 1 ? 1 / aspect : 1.15, threeDepth);
@@ -2343,7 +2569,16 @@ Look at the handwritten math expression, equation, or function in this image (e.
             const sCtx = snap.getContext('2d');
             sCtx.fillStyle = themes[themeIndex].bg;
             sCtx.fillRect(0, 0, snap.width, snap.height);
-            sCtx.drawImage(canvas, box.x || 0, box.y || 0, snap.width, snap.height, 0, 0, snap.width, snap.height);
+
+            sCtx.save();
+            sCtx.translate(-(box.x || 0), -(box.y || 0));
+            const slide = slides[currentSlideIdx];
+            if (slide && slide.items) {
+                for (const item of slide.items) {
+                    drawItem(sCtx, item);
+                }
+            }
+            sCtx.restore();
 
             const tex = new THREE.CanvasTexture(snap);
             if (current3DMesh) threeScene.remove(current3DMesh);
@@ -2394,11 +2629,19 @@ Look at the handwritten math expression, equation, or function in this image (e.
             const img = new Image();
             img.onload = () => {
                 const w = 260, h = Math.round(260 * (img.height / img.width));
-                const x = (canvas.width - w) / 2;
-                const y = (canvas.height - h) / 2;
-                // Draw frameless transparent 3D object directly onto board
-                ctx.drawImage(img, x, y, w, h);
+                const x = (viewport.clientWidth - w) / 2;
+                const y = (viewport.clientHeight - h) / 2;
                 saveHistoryState();
+                const item = {
+                    type: 'image',
+                    img,
+                    dataUrl,
+                    x, y, w, h,
+                    bounds: { x, y, w, h },
+                    labelKh: 'គំរូរូប 3D'
+                };
+                slides[currentSlideIdx].items.push(item);
+                renderBoard();
                 closeModal('three-modal');
                 showToast('បានបញ្ចូលគំរូ 3D ទៅលើក្ដាខៀនដោយគ្មានស៊ុម!');
             };
@@ -2406,7 +2649,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
         }
 
         // =====================================================================
-        // 10. CLASSROOM TOOLS, SMART CALCULATOR & READ ALOUD
+        // 11. CLASSROOM TOOLS, SMART CALCULATOR & READ ALOUD
         // =====================================================================
         function showMathRuler() {
             const ruler = document.getElementById('math-ruler-widget');
@@ -2527,12 +2770,20 @@ Look at the handwritten math expression, equation, or function in this image (e.
             const text = asFraction ? lastCalcOutput.fraction : lastCalcOutput.decimal;
             if (!text) return;
             closeModal('classroom-tools-modal');
-            ctx.save();
-            ctx.fillStyle = currentColor;
-            ctx.font = "bold 34px 'Kantumruy Pro', 'Inter', sans-serif";
-            ctx.fillText(`= ${text}`, canvas.width / 2 - 60, canvas.height / 2);
-            ctx.restore();
+
             saveHistoryState();
+            const slide = slides[currentSlideIdx];
+            const item = {
+                type: 'text',
+                text: `= ${text}`,
+                x: viewport.clientWidth / 2 - 60,
+                y: viewport.clientHeight / 2,
+                size: 34,
+                color: currentColor,
+                bounds: { x: viewport.clientWidth / 2 - 60, y: viewport.clientHeight / 2, w: text.length * 20, h: 40 }
+            };
+            slide.items.push(item);
+            renderBoard();
         }
 
         function speakText(text) {
@@ -2553,54 +2804,33 @@ Look at the handwritten math expression, equation, or function in this image (e.
         }
 
         // =====================================================================
-        // 11. MULTI-PAGE SLIDES, UNDO / REDO & OVERLAY ANIMATION LOOP
+        // 12. MULTI-PAGE SLIDES, VECTOR UNDO / REDO & OVERLAY LOOP
         // =====================================================================
         function saveHistoryState() {
             const slide = slides[currentSlideIdx];
-            slide.history = slide.history.slice(0, slide.step + 1);
-            slide.history.push(canvas.toDataURL());
-            if (slide.history.length > 25) slide.history.shift();
-            slide.step = slide.history.length - 1;
-            slide.objects = [...drawnObjects];
-        }
-
-        function restoreSlideCanvas(slide) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (slide.step >= 0 && slide.history[slide.step]) {
-                const img = new Image();
-                img.onload = () => ctx.drawImage(img, 0, 0);
-                img.src = slide.history[slide.step];
-            }
-            drawnObjects = [...(slide.objects || [])];
-        }
-
-        function restorePreviousStepForShape() {
-            const slide = slides[currentSlideIdx];
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (slide.step >= 0 && slide.history[slide.step]) {
-                const img = new Image();
-                img.onload = () => ctx.drawImage(img, 0, 0);
-                img.src = slide.history[slide.step];
-            }
+            if (!slide) return;
+            slide.undoStack.push(slide.items.map(item => ({ ...item })));
+            if (slide.undoStack.length > 35) slide.undoStack.shift();
+            slide.redoStack = [];
         }
 
         function undo() {
             const slide = slides[currentSlideIdx];
-            if (slide.step > 0) {
-                slide.step--;
-                restoreSlideCanvas(slide);
-            } else if (slide.step === 0) {
-                slide.step = -1;
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawnObjects = [];
+            if (slide && slide.undoStack.length > 0) {
+                slide.redoStack.push(slide.items.map(item => ({ ...item })));
+                slide.items = slide.undoStack.pop();
+                renderBoard();
+                showToast('ត្រឡប់ក្រោយ (Undo)');
             }
         }
 
         function redo() {
             const slide = slides[currentSlideIdx];
-            if (slide.step < slide.history.length - 1) {
-                slide.step++;
-                restoreSlideCanvas(slide);
+            if (slide && slide.redoStack.length > 0) {
+                slide.undoStack.push(slide.items.map(item => ({ ...item })));
+                slide.items = slide.redoStack.pop();
+                renderBoard();
+                showToast('ទៅមុខ (Redo)');
             }
         }
 
@@ -2609,11 +2839,9 @@ Look at the handwritten math expression, equation, or function in this image (e.
         }
 
         function addNewSlide() {
-            slides.push({ history: [], step: -1, objects: [] });
+            slides.push({ items: [], undoStack: [], redoStack: [] });
             currentSlideIdx = slides.length - 1;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawnObjects = [];
-            saveHistoryState();
+            renderBoard();
             updateSlideUI();
             showToast(`បានបង្កើតទំព័រមេរៀនទី ${slides.length}`);
         }
@@ -2621,7 +2849,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
         function prevSlide() {
             if (currentSlideIdx > 0) {
                 currentSlideIdx--;
-                restoreSlideCanvas(slides[currentSlideIdx]);
+                renderBoard();
                 updateSlideUI();
             }
         }
@@ -2629,29 +2857,33 @@ Look at the handwritten math expression, equation, or function in this image (e.
         function nextSlide() {
             if (currentSlideIdx < slides.length - 1) {
                 currentSlideIdx++;
-                restoreSlideCanvas(slides[currentSlideIdx]);
+                renderBoard();
                 updateSlideUI();
             }
         }
 
         function confirmClearBoard() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-            drawnObjects = [];
+            saveHistoryState();
+            const slide = slides[currentSlideIdx];
+            slide.items = [];
             recentMathStrokes = [];
             selectionBox = null;
-            saveHistoryState();
+            clearPreviewCanvas();
+            renderBoard();
             showToast('បានសម្អាតទំព័រក្ដាខៀនរួចរាល់');
         }
 
         function renderLaserAndSpotlightLoop() {
+            const dpr = getDPR();
+            overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
             // Spotlight effect
             if (spotlightEnabled) {
                 overlayCtx.save();
+                overlayCtx.scale(dpr, dpr);
                 overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.72)';
-                overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                overlayCtx.fillRect(0, 0, viewport.clientWidth, viewport.clientHeight);
                 overlayCtx.globalCompositeOperation = 'destination-out';
                 const grad = overlayCtx.createRadialGradient(spotlightPos.x, spotlightPos.y, 40, spotlightPos.x, spotlightPos.y, 140);
                 grad.addColorStop(0, 'rgba(0,0,0,1)');
@@ -2668,6 +2900,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
             laserTrail = laserTrail.filter(p => now - p.time < 650);
             if (laserTrail.length > 1) {
                 overlayCtx.save();
+                overlayCtx.scale(dpr, dpr);
                 for (let i = 1; i < laserTrail.length; i++) {
                     const alpha = 1 - (now - laserTrail[i].time) / 650;
                     overlayCtx.strokeStyle = `rgba(244, 63, 94, ${alpha})`;
@@ -2690,7 +2923,7 @@ Look at the handwritten math expression, equation, or function in this image (e.
         }
 
         // =====================================================================
-        // 12. MODALS & TOAST HELPERS
+        // 13. MODALS & TOAST HELPERS
         // =====================================================================
         function openModal(id) {
             document.getElementById(id).classList.remove('hidden');
@@ -2717,7 +2950,6 @@ Look at the handwritten math expression, equation, or function in this image (e.
         window.onload = function () {
             lucide.createIcons();
             resizeCanvases();
-            saveHistoryState();
             renderLaserAndSpotlightLoop();
             updateApiKeyIndicator();
         };
